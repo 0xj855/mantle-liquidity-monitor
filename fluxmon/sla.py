@@ -3,7 +3,8 @@
 存储分两层：
 - SQLite 表 rfq_sla 只做 7 天缓冲；
 - 月度 CSV（<dir>/rfq/YYYY-MM.csv，UTC 月份）是长期记录，CI 中位于 sla-data 分支，每次只追加比文件里更新的样本。
-汇总口径：按 UTC 日期；达标率 = 达标样本 / 全部样本（盘中缺报价算不达标），另给报价在线率与报价时达标率。
+汇总口径：按 UTC 日期；达标率 = 达标样本 / 考核样本，考核样本 = 全部样本 − 非盘中时段无报价的样本
+（盘中缺报价算不达标）；另给报价在线率与报价时达标率。
 """
 import csv
 import json
@@ -16,7 +17,7 @@ FIELDS = ["ts", "time_utc", "symbol", "tier", "session", "holiday", "quoted", "a
           "impact_buy_10k_pct", "impact_buy_50k_pct", "impact_buy_100k_pct"]
 STATUSES = ["pass", "wide", "no_bid", "missing_open", "unquoted_off_hours"]
 BUFFER_DAYS = 7
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
 
 
 def _ensure(store):
@@ -93,8 +94,10 @@ def _agg(rows):
     mids = sorted(r["mid_bps"] for r in rows if r["mid_bps"] is not None)
     depth = [r["max_buy_usd"] for r in rows if r["quoted"] and r["max_buy_usd"] is not None]
     q = lambda xs, p: xs[min(len(xs) - 1, int(p * (len(xs) - 1) + 0.5))] if xs else None
+    out["eligible"] = out["n"] - out["unquoted_off_hours"]   # 达标率分母：非盘中无报价不考核
+    bms = [r["bm_hi"] for r in rows if r["bm_hi"] is not None]   # rows 按时间排序，取期间内最后生效的基准
     out.update(mid_med=q(mids, .5), mid_p90=q(mids, .9), depth_med=statistics.median(depth) if depth else None,
-               bm_hi=max((r["bm_hi"] for r in rows if r["bm_hi"] is not None), default=None))
+               bm_hi=bms[-1] if bms else None)
     return out
 
 
@@ -128,7 +131,7 @@ def summarize(out_dir, now):
         cached = cache / f"{m}.json"
         if m != this_month and cached.exists():
             c = json.loads(cached.read_text())
-            if c.get("v") == SUMMARY_VERSION:
+            if c.get("v") == SUMMARY_VERSION and c.get("size") == path.stat().st_size:   # CSV 被补写过则重算
                 months[m] = c["month"]
                 daily.update(c["daily"])
                 tiers.update(c["tiers"])
@@ -149,7 +152,7 @@ def summarize(out_dir, now):
         first = min(first or rows[0]["ts"], min(r["ts"] for r in rows))
         recent += [r for r in rows if r["ts"] >= now - 30 * 86400]
         if m != this_month:
-            cached.write_text(json.dumps({"v": SUMMARY_VERSION, "month": months[m], "daily": md, "tiers": tiers,
+            cached.write_text(json.dumps({"v": SUMMARY_VERSION, "size": path.stat().st_size, "month": months[m], "daily": md, "tiers": tiers,
                                           "first_ts": min(r["ts"] for r in rows), "last_ts": max(r["ts"] for r in rows)}))
     periods = {"7d": _group([r for r in recent if r["ts"] >= now - 7 * 86400]), "30d": _group(recent)}
     periods.update({f"m:{m}": v for m, v in months.items()})

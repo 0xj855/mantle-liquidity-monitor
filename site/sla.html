@@ -126,35 +126,35 @@ const SESS = ["all", "market_open", "pre_post", "weekend"];
 const I18N = {
   zh: {
     docTitle: "Fluxion RFQ SLA 执行记录", back: "← 返回流动性看板", title: "Fluxion RFQ SLA 执行记录",
-    subtitle: d => `10 个指定 xStocks 的 RFQ 报价，约每 5 分钟采样一次，记录始于 ${d}（UTC）。达标 = 中价点差不超过该时段 Tier 基准上限；没有报价的样本计为不达标。`,
+    subtitle: d => `10 个指定 xStocks 的 RFQ 报价，约每 5 分钟采样一次，记录始于 ${d}（UTC）。达标 = 中价点差不超过该时段 Tier 基准上限；盘中缺报价计为不达标，盘前盘后与周末没有报价的样本不计入考核。`,
     period: "期间", session: "时段", p7: "近 7 天", p30: "近 30 天", month: m => m,
     sess: { all: "全部时段", market_open: "盘中", pre_post: "盘前盘后", weekend: "周末 / 休市" },
     loadFail: "数据加载失败：", unavailable: "本轮 SLA 汇总失败，暂不可用。", noData: "该期间还没有样本。", updated: "更新于 ",
-    tSamples: "样本数", tSamplesD: n => `${n} 个标的`, tUp: "报价在线率", tUpD: "有报价的样本占比", tPass: "达标率", tPassD: "达标样本 / 全部样本",
+    tSamples: "样本数", tSamplesD: n => `${n} 个标的`, tUp: "报价在线率", tUpD: "有报价的样本占比", tPass: "达标率", tPassD: "达标样本 / 考核样本",
     tMiss: "盘中缺报价", tMissD: "计为不达标的样本数",
-    tblTitle: "按标的", tblDesc: "达标率 = 达标样本 / 全部样本；报价时达标率 = 达标样本 / 有报价样本。点差为 $1k 档的中价点差（bps）。",
+    tblTitle: "按标的", tblDesc: "考核样本 = 全部样本 − 非盘中无报价样本。达标率 = 达标样本 / 考核样本；报价时达标率 = 达标样本 / 有报价样本。基准上限为期间内最后生效的值。点差为 $1k 档的中价点差（bps）。",
     csvBtn: "下载本表 CSV",
-    cSym: "标的", cBm: "基准上限", cN: "样本", cUp: "在线率", cPass: "达标率", cPassQ: "报价时达标率", cWide: "超标", cNoBid: "缺卖价", cMiss: "盘中缺报价",
+    cSym: "标的", cBm: "基准上限", cN: "样本", cElig: "考核样本", cUp: "在线率", cPass: "达标率", cPassQ: "报价时达标率", cWide: "超标", cNoBid: "缺卖价", cMiss: "盘中缺报价",
     cMid: "中价点差 中位 / P90", cDepth: "最大承接深度（中位）", bmVaries: "按时段",
-    heatTitle: "逐日达标率", heatDesc: "每格是该标的当天（UTC）在所选时段的达标率；灰色表示当天该时段没有样本。", heatLo: "0%", heatHi: "100%",
-    cell: (sym, d, p, n) => `${sym} ${d}：达标率 ${p}（${n} 个样本）`,
+    heatTitle: "逐日达标率", heatDesc: "每格是该标的当天（UTC）在所选时段的达标率；灰色表示当天该时段没有考核样本。", heatLo: "0%", heatHi: "100%",
+    cell: (sym, d, p, n) => `${sym} ${d}：达标率 ${p}（${n} 个考核样本）`,
     filesTitle: "原始样本", filesDesc: "每轮每个标的一行，按 UTC 月份分文件，长期保留。", filesNone: "首个月度文件会在第一次提交后出现。",
     footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价），SLA 基准与 Tier 见仓库 config/config.json → rfq_sla。原始样本同时保存在仓库 sla-data 分支。",
   },
   en: {
     docTitle: "Fluxion RFQ SLA Record", back: "← Back to liquidity dashboard", title: "Fluxion RFQ SLA record",
-    subtitle: d => `RFQ quotes for the 10 designated xStocks, sampled about every 5 minutes since ${d} (UTC). Pass = mid spread at or below the session's tier benchmark ceiling; samples without a quote count as failures.`,
+    subtitle: d => `RFQ quotes for the 10 designated xStocks, sampled about every 5 minutes since ${d} (UTC). Pass = mid spread at or below the session's tier benchmark ceiling; missing quotes in market hours count as failures, and unquoted samples outside market hours are not assessed.`,
     period: "Period", session: "Session", p7: "Last 7 days", p30: "Last 30 days", month: m => m,
     sess: { all: "All sessions", market_open: "Market open", pre_post: "Pre / post", weekend: "Weekend / holiday" },
     loadFail: "Failed to load data: ", unavailable: "SLA summary failed this run and is temporarily unavailable.", noData: "No samples in this period yet.", updated: "Updated ",
-    tSamples: "Samples", tSamplesD: n => `${n} tokens`, tUp: "Quote uptime", tUpD: "Share of samples with a quote", tPass: "Pass rate", tPassD: "Passing samples / all samples",
+    tSamples: "Samples", tSamplesD: n => `${n} tokens`, tUp: "Quote uptime", tUpD: "Share of samples with a quote", tPass: "Pass rate", tPassD: "Passing samples / assessed samples",
     tMiss: "Missing in market hours", tMissD: "Samples counted as failures",
-    tblTitle: "By token", tblDesc: "Pass rate = passing samples / all samples; pass rate when quoted = passing samples / quoted samples. Spread is the $1k mid spread in bps.",
+    tblTitle: "By token", tblDesc: "Assessed samples = all samples minus unquoted samples outside market hours. Pass rate = passing / assessed; pass rate when quoted = passing / quoted. The benchmark ceiling is the last one in effect during the period. Spread is the $1k mid spread in bps.",
     csvBtn: "Download table CSV",
-    cSym: "Token", cBm: "Benchmark ceiling", cN: "Samples", cUp: "Uptime", cPass: "Pass rate", cPassQ: "Pass rate when quoted", cWide: "Wide", cNoBid: "No bid", cMiss: "Missing (open)",
+    cSym: "Token", cBm: "Benchmark ceiling", cN: "Samples", cElig: "Assessed", cUp: "Uptime", cPass: "Pass rate", cPassQ: "Pass rate when quoted", cWide: "Wide", cNoBid: "No bid", cMiss: "Missing (open)",
     cMid: "Mid spread median / P90", cDepth: "Max fill depth (median)", bmVaries: "By session",
-    heatTitle: "Daily pass rate", heatDesc: "Each cell is the token's pass rate for that UTC day in the selected session; grey means no samples.", heatLo: "0%", heatHi: "100%",
-    cell: (sym, d, p, n) => `${sym} ${d}: pass rate ${p} (${n} samples)`,
+    heatTitle: "Daily pass rate", heatDesc: "Each cell is the token's pass rate for that UTC day in the selected session; grey means no assessed samples.", heatLo: "0%", heatHi: "100%",
+    cell: (sym, d, p, n) => `${sym} ${d}: pass rate ${p} (${n} assessed samples)`,
     filesTitle: "Raw samples", filesDesc: "One row per token per run, one file per UTC month, kept indefinitely.", filesNone: "The first monthly file appears after the first commit.",
     footer: "Source: Fluxion RFQ quote API ($1k–$100k probes). SLA benchmarks and tiers are in config/config.json → rfq_sla. Raw samples are also kept on the repository's sla-data branch.",
   },
@@ -168,6 +168,7 @@ const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag)
   for (const [k, v] of Object.entries(attrs)) k === "class" ? e.className = v : k === "text" ? e.textContent = v : e.setAttribute(k, v);
   for (const k of kids) if (k != null) e.append(k); return e; };
 const rate = (a, b) => b ? a / b : null;
+const elig = a => a.eligible ?? (a.n - (a.unquoted_off_hours || 0));   // 达标率分母：非盘中无报价不考核
 const fmtPct = v => v == null ? "–" : (v * 100).toFixed(1) + "%";
 const fmtBps = v => v == null ? "–" : v.toFixed(1);
 const fmtUsd = v => v == null ? "–" : "$" + (v >= 1e3 ? (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + "K" : v.toFixed(0));
@@ -209,7 +210,11 @@ function render() {
   const D = state.data;
   if (!D) return;
   $("#meta").textContent = T().updated + new Date(D.ts * 1000).toLocaleString(LANG === "zh" ? "zh-CN" : "en-US");
-  if (D.error) { for (const id of ["#tiles", "#table", "#heat", "#files"]) $(id).replaceChildren(); $("#table").append(el("div", { class: "empty", text: T().unavailable })); return; }
+  if (D.error) {
+    for (const id of ["#tiles", "#table", "#heat", "#files", "#f-period"]) $(id).replaceChildren();
+    $("#subtitle").textContent = "";
+    $("#table").append(el("div", { class: "empty", text: T().unavailable })); return;
+  }
   $("#subtitle").textContent = T().subtitle(D.first_ts ? day(D.first_ts) : "–");
   periodOptions();
   const rows = rowsFor();
@@ -218,11 +223,11 @@ function render() {
   $("#tiles").replaceChildren(...[
     [T().tSamples, N.toLocaleString(), T().tSamplesD(rows.length)],
     [T().tUp, fmtPct(rate(sum("quoted"), N)), T().tUpD],
-    [T().tPass, fmtPct(rate(sum("pass"), N)), T().tPassD],
+    [T().tPass, fmtPct(rate(sum("pass"), rows.reduce((s, r) => s + elig(r.a), 0))), T().tPassD],
     [T().tMiss, sum("missing_open").toLocaleString(), T().tMissD],
   ].map(([k, v, d]) => el("div", { class: "tile" }, el("div", { class: "k", text: k }), el("div", { class: "v", text: v }), el("div", { class: "d", text: d }))));
 
-  const cols = [T().cSym, T().cBm, T().cN, T().cUp, T().cPass, T().cPassQ, T().cWide, T().cNoBid, T().cMiss, T().cMid, T().cDepth];
+  const cols = [T().cSym, T().cBm, T().cN, T().cElig, T().cUp, T().cPass, T().cPassQ, T().cWide, T().cNoBid, T().cMiss, T().cMid, T().cDepth];
   const csvBtn = el("button", { class: "btn", type: "button", text: T().csvBtn });
   csvBtn.addEventListener("click", () => downloadCsv(cols, rows));
   $("#table").replaceChildren(el("div", { class: "card-head" }, el("h2", { text: T().tblTitle }), rows.length ? csvBtn : null), el("p", { class: "desc", text: T().tblDesc }),
@@ -230,9 +235,9 @@ function render() {
       el("thead", {}, el("tr", {}, ...cols.map(c => el("th", { text: c })))),
       el("tbody", {}, ...rows.map(({ sym, tier, a }) => el("tr", {},
         el("td", {}, sym, el("span", { class: "tier", text: tier || "–" })),
-        el("td", { text: state.sess === "all" ? T().bmVaries : fmtBps(a.bm_hi) + " bps" }),
-        el("td", { text: a.n.toLocaleString() }),
-        rateCell(rate(a.quoted, a.n)), rateCell(rate(a.pass, a.n)), rateCell(rate(a.pass, a.quoted)),
+        el("td", { text: state.sess === "all" ? T().bmVaries : a.bm_hi == null ? "–" : fmtBps(a.bm_hi) + " bps" }),
+        el("td", { text: a.n.toLocaleString() }), el("td", { text: elig(a).toLocaleString() }),
+        rateCell(rate(a.quoted, a.n)), rateCell(rate(a.pass, elig(a))), rateCell(rate(a.pass, a.quoted)),
         el("td", { text: a.wide }), el("td", { text: a.no_bid }), el("td", { text: a.missing_open }),
         el("td", { text: `${fmtBps(a.mid_med)} / ${fmtBps(a.mid_p90)}` }), el("td", { text: fmtUsd(a.depth_med) })))))) : el("div", { class: "empty", text: T().noData }));
 
@@ -240,9 +245,9 @@ function render() {
   const heat = el("table", { class: "heat" }, el("thead", {}, el("tr", {}, el("th", {}), ...days.map(d => el("th", { text: d.slice(8) })))),
     el("tbody", {}, ...syms.map(sym => el("tr", {}, el("th", { class: "sym", text: sym }), ...days.map(d => {
       const a = (((D.daily || {})[d] || {})[sym] || {})[state.sess];
-      if (!a || !a.n) return el("td", { class: "none", title: `${sym} ${d}: –` });
-      const p = a.pass / a.n;
-      return el("td", { style: `background:color-mix(in srgb, var(--heat-1) ${(p * 100).toFixed(0)}%, var(--heat-0))`, title: T().cell(sym, d, fmtPct(p), a.n), text: Math.round(p * 100) });
+      if (!a || !elig(a)) return el("td", { class: "none", title: `${sym} ${d}: –` });
+      const p = a.pass / elig(a);
+      return el("td", { style: `background:color-mix(in srgb, var(--heat-1) ${(p * 100).toFixed(0)}%, var(--heat-0))`, title: T().cell(sym, d, fmtPct(p), elig(a)), text: Math.round(p * 100) });
     })))));
   $("#heat").replaceChildren(el("h2", { text: T().heatTitle }), el("p", { class: "desc", text: T().heatDesc }),
     syms.length ? el("div", { class: "tablewrap" }, heat) : el("div", { class: "empty", text: T().noData }),
@@ -257,10 +262,10 @@ function render() {
 function downloadCsv(cols, rows) {
   const q = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
   const r4 = v => v == null ? "" : (v * 100).toFixed(2);
-  const lines = [["period", "session", "symbol", "tier", "bm_hi_bps", "samples", "quoted", "pass", "wide", "no_bid", "missing_open", "uptime_pct", "pass_rate_pct", "pass_rate_quoted_pct", "mid_bps_median", "mid_bps_p90", "max_fill_usd_median"].join(",")];
+  const lines = [["period", "session", "symbol", "tier", "bm_hi_bps", "samples", "assessed", "quoted", "pass", "wide", "no_bid", "missing_open", "uptime_pct", "pass_rate_pct", "pass_rate_quoted_pct", "mid_bps_median", "mid_bps_p90", "max_fill_usd_median"].join(",")];
   for (const { sym, tier, a } of rows)
-    lines.push([state.period, state.sess, sym, tier, a.bm_hi ?? "", a.n, a.quoted, a.pass, a.wide, a.no_bid, a.missing_open,
-      r4(rate(a.quoted, a.n)), r4(rate(a.pass, a.n)), r4(rate(a.pass, a.quoted)), a.mid_med ?? "", a.mid_p90 ?? "", a.depth_med ?? ""].map(q).join(","));
+    lines.push([state.period, state.sess, sym, tier, a.bm_hi ?? "", a.n, elig(a), a.quoted, a.pass, a.wide, a.no_bid, a.missing_open,
+      r4(rate(a.quoted, a.n)), r4(rate(a.pass, elig(a))), r4(rate(a.pass, a.quoted)), a.mid_med ?? "", a.mid_p90 ?? "", a.depth_med ?? ""].map(q).join(","));
   const url = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
   const link = el("a", { href: url, download: `fluxion-rfq-sla-${state.period.replace("m:", "")}-${state.sess}.csv` });
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);

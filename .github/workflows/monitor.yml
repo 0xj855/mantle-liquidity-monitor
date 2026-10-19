@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write     # SLA 记录提交到 sla-data 分支
+  contents: write     # 仅 "Commit SLA data" 一步拿到 token（checkout 不保存凭据）
   pages: write
   id-token: write
 
@@ -32,6 +32,8 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # 监控脚本处理外部数据，不让它接触有写权限的 token
 
       - uses: actions/setup-python@v5
         with:
@@ -45,12 +47,17 @@ jobs:
           restore-keys: fluxmon-db-
 
       # SLA 长期记录：sla-data 分支（只放月度 CSV 与已结束月份的汇总），以 worktree 挂在 sla-data/
+      # 只有分支确实不存在时才新建；网络等错误直接失败，避免用空历史覆盖汇总
       - name: Checkout SLA data
         run: |
-          if git fetch --depth=1 origin sla-data; then
+          set +e; git ls-remote --exit-code --heads origin sla-data >/dev/null; rc=$?; set -e
+          if [ $rc -eq 0 ]; then
+            git fetch --depth=1 origin sla-data
             git worktree add sla-data FETCH_HEAD
-          else
+          elif [ $rc -eq 2 ]; then
             git worktree add --orphan -b sla-data sla-data
+          else
+            echo "cannot reach origin (ls-remote exit $rc)"; exit 1
           fi
 
       - name: Run monitor
@@ -64,15 +71,13 @@ jobs:
           FLUXMON_SLA_DIR: sla-data
         run: python -m fluxmon.main
 
-      # 监控本身失败时发邮件（6 小时内只发一封）；必须在 cache save 之前，冷却时间才能存进数据库
-      - name: Notify failure
-        if: failure()
-        run: |
-          python -m fluxmon.mailer failed "workflow run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
       # 每小时提交一次（未提交的样本留在数据库缓冲里，下次一起追加）；跨日时立即提交
       - name: Commit SLA data
+        id: commit_sla
         if: always()
+        continue-on-error: true   # 推送失败不阻塞看板部署，由下一步发失败邮件
+        env:
+          PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd sla-data
           git add -A
@@ -81,7 +86,13 @@ jobs:
           lastday=$(git log -1 --format=%cd --date=format-local:%Y-%m-%d 2>/dev/null || echo none)
           if [ $(( $(date +%s) - last )) -lt 3600 ] && [ "$lastday" = "$(TZ=UTC date +%Y-%m-%d)" ]; then exit 0; fi
           git -c user.name="mantle-liquidity-monitor" -c user.email="actions@users.noreply.github.com" commit -q -m "SLA samples $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push origin HEAD:sla-data
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:sla-data
+
+      # 监控或 SLA 推送失败时发邮件（6 小时内只发一封）；必须在 cache save 之前，冷却时间才能存进数据库
+      - name: Notify failure
+        if: failure() || steps.commit_sla.outcome == 'failure'
+        run: |
+          python -m fluxmon.mailer failed "workflow run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - uses: actions/cache/save@v4
         if: always()
