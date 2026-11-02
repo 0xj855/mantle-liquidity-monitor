@@ -214,8 +214,11 @@ def _bucket(rows):
 VENUE_METRICS = ["f_spread", "j_spread", "f_buy10", "j_buy10", "f_buy100", "j_buy100", "f_sell10", "j_sell10",
                  "buy_adv10", "buy_adv100", "sell_adv10"]
 VENUE_SIZES = {"b10": ("buy_adv10", "f_buy10", "j_buy10"), "b100": ("buy_adv100", "f_buy100", "j_buy100"), "s10": ("sell_adv10", "f_sell10", "j_sell10")}
-# 每档：w/l = Fluxion / Jupiter 更优的样本数，c = 两边都有报价的样本数，fv / jv = Fluxion / Jupiter 有报价的样本数
-VENUE_SERIES = ["t", "sess", "n", "fq"] + VENUE_METRICS + [f"{k}_{s}" for s in VENUE_SIZES for k in ("w", "l", "c", "fv", "jv")]
+# 每档：w/l = Fluxion / Jupiter 更优的样本数；c = 两边都有报价（优势可算）；
+# fo = 只有 Fluxion 的成本（Jupiter 缺报价）；jo = 只有 Jupiter 的成本（Fluxion 缺报价）；
+# 其余 n − c − fo − jo 为无法判断（美股参考价缺失、两边都没报价或本轮未比价）。
+# 优势不依赖美股参考价，而成本依赖，所以只靠优势与"单边成本"判断哪一边缺报价。
+VENUE_SERIES = ["t", "sess", "n", "fq"] + VENUE_METRICS + [f"{k}_{s}" for s in VENUE_SIZES for k in ("w", "l", "c", "fo", "jo")]
 
 
 def _venue_rows(venue_dir, since):
@@ -237,8 +240,8 @@ def _venue_bucket(rows):
     out += [med(k) for k in VENUE_METRICS]
     for adv, f, j in VENUE_SIZES.values():
         xs = [r[adv] for r in rows if r[adv] is not None]
-        out += [sum(x >= 1 for x in xs), sum(x <= -1 for x in xs), len(xs),
-                sum(r[f] is not None for r in rows), sum(r[j] is not None for r in rows)]
+        solo = lambda a, b: sum(r[adv] is None and r[a] is not None and r[b] is None for r in rows)
+        out += [sum(x >= 1 for x in xs), sum(x <= -1 for x in xs), len(xs), solo(f, j), solo(j, f)]
     return out
 
 
