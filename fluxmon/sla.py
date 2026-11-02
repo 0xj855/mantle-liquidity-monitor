@@ -12,6 +12,8 @@ import statistics
 import time
 from pathlib import Path
 
+from .venue import HISTORY_FIELDS as VENUE_HISTORY_FIELDS
+
 FIELDS = ["ts", "time_utc", "symbol", "tier", "session", "holiday", "quoted", "ask_1k", "bid_1k", "mid_price",
           "spread_bps", "mid_bps", "bm_lo_bps", "bm_hi_bps", "sla_status", "max_buy_usd", "max_sell_usd",
           "impact_buy_10k_pct", "impact_buy_50k_pct", "impact_buy_100k_pct"]
@@ -54,29 +56,44 @@ def _last_ts(path):
     return last
 
 
-def export(store, out_dir):
-    """把缓冲里比 CSV 更新的样本追加到对应月份文件。返回追加行数。"""
-    _ensure(store)
-    rfq = Path(out_dir) / "rfq"
-    rfq.mkdir(parents=True, exist_ok=True)
+def _append_monthly(folder, header, rows):
+    """rows 首列为 ts；按 UTC 月份追加到 <folder>/YYYY-MM.csv，只写比文件中更新的行。返回追加行数。"""
+    folder.mkdir(parents=True, exist_ok=True)
     by_month = {}
-    for ts, data in store.db.execute("SELECT ts, data FROM rfq_sla ORDER BY ts, symbol"):
-        by_month.setdefault(time.strftime("%Y-%m", time.gmtime(ts)), []).append(json.loads(data))
+    for r in rows:
+        by_month.setdefault(time.strftime("%Y-%m", time.gmtime(r[0])), []).append(r)
     n = 0
-    for month, rows in by_month.items():
-        path = rfq / f"{month}.csv"
+    for month, rs in by_month.items():
+        path = folder / f"{month}.csv"
         last = _last_ts(path)
-        new = [r for r in rows if r[0] > last]
+        new = [r for r in rs if r[0] > last]
         if not new:
             continue
         fresh = not path.exists()
         with path.open("a", newline="") as f:
             w = csv.writer(f)
             if fresh:
-                w.writerow(FIELDS)
+                w.writerow(header)
             w.writerows(["" if v is None else v for v in r] for r in new)
         n += len(new)
     return n
+
+
+def export(store, out_dir):
+    """把缓冲里比 CSV 更新的样本追加到对应月份文件。返回追加行数。"""
+    _ensure(store)
+    rows = [json.loads(d) for (d,) in store.db.execute("SELECT data FROM rfq_sla ORDER BY ts, symbol")]
+    return _append_monthly(Path(out_dir) / "rfq", FIELDS, rows)
+
+
+VENUE_FIELDS = ["ts", "time_utc", "symbol"] + VENUE_HISTORY_FIELDS
+
+
+def export_venue(store, out_dir):
+    """跨链比价样本（rfq_snapshots，数据库只留 30 天）追加到 <dir>/venue/YYYY-MM.csv 长期保存。"""
+    rows = [[ts, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts)), sym] + json.loads(d)
+            for ts, sym, d in store.db.execute("SELECT ts, symbol, data FROM rfq_snapshots ORDER BY ts, symbol")]
+    return _append_monthly(Path(out_dir) / "venue", VENUE_FIELDS, rows)
 
 
 def _num(v):
@@ -194,31 +211,70 @@ def _bucket(rows):
             round(max(bps), 2) if bps else None, bms[-1] if bms else None, med("buy"), med("sell"), med("i10"), med("i50"), med("i100")]
 
 
+VENUE_METRICS = ["f_spread", "j_spread", "f_buy10", "j_buy10", "f_buy100", "j_buy100", "f_sell10", "j_sell10",
+                 "buy_adv10", "buy_adv100", "sell_adv10"]
+VENUE_SERIES = ["t", "sess", "n", "fq"] + VENUE_METRICS + [f"{k}_{s}" for s in ("b10", "b100", "s10") for k in ("w", "l", "c")]
+
+
+def _venue_rows(venue_dir, since):
+    out = []
+    for path in sorted(Path(venue_dir).glob("*.csv"))[-2:]:
+        with path.open() as f:
+            for r in csv.DictReader(f):
+                ts = int(r["ts"])
+                if ts >= since:
+                    out.append({"ts": ts, "symbol": r["symbol"], "session": r["session"], "fq": int(r["f_quoted"] or 0),
+                                **{k: _num(r[k]) for k in VENUE_METRICS}})
+    return out
+
+
+def _venue_bucket(rows):
+    """优势 ≥1 bps 记 Fluxion 更优（w），≤ −1 记 Jupiter 更优（l），c 为有效样本数；其余字段取中位。"""
+    med = lambda k: (lambda xs: round(statistics.median(xs), 2) if xs else None)([r[k] for r in rows if r[k] is not None])
+    out = [None, SESS_CODE.get(statistics.mode(r["session"] for r in rows), 2), len(rows), sum(r["fq"] for r in rows)]
+    out += [med(k) for k in VENUE_METRICS]
+    for k in ("buy_adv10", "buy_adv100", "sell_adv10"):
+        xs = [r[k] for r in rows if r[k] is not None]
+        out += [sum(x >= 1 for x in xs), sum(x <= -1 for x in xs), len(xs)]
+    return out
+
+
+def _layers(rows, now, bucket_fn):
+    layers = {}
+    for name, (step, days) in SERIES_LAYERS.items():
+        buckets = {}
+        for r in rows:
+            if r["ts"] >= now - days * 86400:
+                buckets.setdefault(r["ts"] // step * step, []).append(r)
+        pts = []
+        for t in sorted(buckets):
+            p = bucket_fn(buckets[t])
+            p[0] = t
+            pts.append(p)
+        layers[name] = {"step": step, "days": days, "points": pts}
+    return layers
+
+
 def export_series(sla_dir, out_dir, now):
     """为每个标的写 <out_dir>/<SYMBOL>.json：raw（5 分钟，5 天）、q15（15 分钟，7 天）、h1（1 小时，31 天）三层。"""
-    rows = _series_rows(Path(sla_dir) / "rfq", now - max(d for _, d in SERIES_LAYERS.values()) * 86400)
+    since = now - max(d for _, d in SERIES_LAYERS.values()) * 86400
+    rows = _series_rows(Path(sla_dir) / "rfq", since)
+    venue_by_sym = {}
+    for r in _venue_rows(Path(sla_dir) / "venue", since):
+        venue_by_sym.setdefault(r["symbol"], []).append(r)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     by_sym = {}
     for r in rows:
         by_sym.setdefault(r["symbol"], []).append(r)
     for sym, rs in by_sym.items():
-        layers = {}
-        for name, (step, days) in SERIES_LAYERS.items():
-            buckets = {}
-            for r in rs:
-                if r["ts"] >= now - days * 86400:
-                    buckets.setdefault(r["ts"] // step * step, []).append(r)
-            pts = []
-            for t in sorted(buckets):
-                p = _bucket(buckets[t])
-                p[0] = t
-                pts.append(p)
-            layers[name] = {"step": step, "days": days, "points": pts}
+        layers = _layers(rs, now, _bucket)
+        vrs = venue_by_sym.get(sym, [])
+        venue = {"fields": VENUE_SERIES, "layers": _layers(vrs, now, _venue_bucket)} if vrs else None
         last = rs[-1]
         (out_dir / f"{sym}.json").write_text(json.dumps({
             "symbol": sym, "tier": last["tier"], "ts": now, "fields": SERIES_FIELDS, "sessions": list(SESS_CODE),
             "latest": {k: last[k] for k in ("ts", "session", "quoted", "status", "ask", "bid", "mid", "bps", "bm", "buy", "sell")},
-            "layers": layers}, separators=(",", ":")))
+            "layers": layers, "venue": venue}, separators=(",", ":")))
     (out_dir / "index.json").write_text(json.dumps({"ts": now, "symbols": sorted(by_sym), "tiers": {s: rs[-1]["tier"] for s, rs in by_sym.items()}}))
     return len(by_sym)

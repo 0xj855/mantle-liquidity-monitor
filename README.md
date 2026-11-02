@@ -24,7 +24,7 @@ FLUXMON_LARK_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/xxx ./run.sh  
 2. **读池子状态**：Multicall3 一次性读 `slot0`、`liquidity`、全部 `tickBitmap` 与已初始化 tick 的 `liquidityNet`。
 3. **计算指标**（美元口径，见下表）。
 4. **RFQ 深度探测**：对主流 xStocks（SOW 10 个指定标的）向 Fluxion RFQ 接口探测双向做市报价、买卖价差（Spread）及多档买卖深度（$1k / $10k / $50k / $100k），并与链上 AMM 冲击横向对比。
-   - **报价历史**：`rfq.html` 按标的展示 3 天 / 5 天 / 1 周 / 1 月的报价走势、点差 vs 基准、承接深度与在线条；数据由 SLA 明细降采样生成（5 天内 5 分钟、1 周 15 分钟、1 月 1 小时，`data/rfq/<标的>.json`）。
+   - **报价历史**：`rfq.html` 按标的展示 3 天 / 5 天 / 1 周 / 1 月的报价走势、点差 vs 基准、承接深度与在线条；数据由 SLA 明细降采样生成（5 天内 5 分钟、1 周 15 分钟、1 月 1 小时，`data/rfq/<标的>.json`）。同页第 ⑤ 部分为跨链比价历史（Fluxion vs Jupiter 的优势与相对美股成本）；跨链比价样本长期保存在 `sla-data` 分支的 `venue/YYYY-MM.csv`（首次运行从数据库 30 天缓冲回填）。
    - **SLA 执行记录**：每轮每个标的记录报价、中价点差、基准与判定（`fluxmon/sla.py`），每小时追加到仓库 `sla-data` 分支的月度 CSV（`rfq/YYYY-MM.csv`，长期保留）；看板页面 `sla.html` 按期间 / 时段汇总在线率与达标率，可下载 CSV。
 5. **跨链比价**：对上述标的同时向 Solana 上的 Jupiter 聚合器询价（$10k / $100k 买入、$10k 卖出），并取标的美股最新成交价（Yahoo，含盘前盘后），计算两边相对美股的成本和 Fluxion 相对 Jupiter 的优势；Solana 价格按 Token-2022 Scaled UI multiplier（股息再投资）换算成每股。逐轮写入历史，看板按交易时段（盘中 / 盘前盘后 / 周末）汇总报价在线率与优势中位数。`--skip-venue` 可跳过。
 6. **流通量与 Bybit 充提**：增量同步 10 个指定 xStocks 原生代币的 Transfer 事件（首次回填 30 天），按 `config/config.json → flows.labels`（Mantlescan 公开标签：Bybit 钱包为 exchange，Backed: Deployer 为 issuer）统计总供应、发行方库存、流通量、交易所持仓，以及 24h / 7d / 30d 的提现（交易所 → 链上）与充值（链上 → 交易所）。对手方按链上行为归并成实体并分为做市/套利/机构、散户、未判定（`fluxmon/counterparty.py`），看板独立页面 `flows.html`。

@@ -457,7 +457,7 @@ def run(args):
     (out_dir / "counterparties.json").write_text(json.dumps(clean(cp_data or {"ts": now, "error": "flows disabled"}), indent=1, ensure_ascii=False))
     try:   # SLA 记录：追加到长期 CSV（CI 中为 sla-data 分支）并汇总
         sla_dir = Path(os.environ.get("FLUXMON_SLA_DIR") or ROOT / "data" / "sla")
-        print("sla rows appended:", sla.export(store, sla_dir))
+        print("sla rows appended:", sla.export(store, sla_dir), "| venue rows appended:", sla.export_venue(store, sla_dir))
         (out_dir / "sla.json").write_text(json.dumps(clean(sla.summarize(sla_dir, now)), separators=(",", ":")))
         print("rfq series:", sla.export_series(sla_dir, out_dir / "rfq", now))
     except Exception as e:

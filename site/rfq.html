@@ -121,6 +121,16 @@ footer{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
     </div>
   </section>
   <section class="card"><h2 data-i18n="cStrip"></h2><p class="desc" data-i18n="cStripD"></p><div class="legend" id="lg-strip"></div><div class="chart" id="ch-strip"></div></section>
+  <section class="card" id="venue">
+    <h2 data-i18n="cVenue"></h2><p class="desc" data-i18n="cVenueD"></p>
+    <div class="now" id="v-stats"></div>
+    <div class="row-h"><h3 data-i18n="cAdv"></h3></div>
+    <div class="legend" id="lg-adv"></div><div class="chart" id="ch-adv"></div>
+    <div class="row-h"><h3 data-i18n="cCost"></h3><div class="seg" id="f-cost">
+      <button data-v="buy10" aria-pressed="true"></button><button data-v="buy100" aria-pressed="false"></button>
+      <button data-v="sell10" aria-pressed="false"></button><button data-v="spread" aria-pressed="false"></button></div></div>
+    <div class="legend" id="lg-cost"></div><div class="chart" id="ch-cost"></div>
+  </section>
   <footer data-i18n="footer"></footer>
 </div>
 <div class="tip" id="tip" hidden></div>
@@ -133,7 +143,7 @@ const SVGNS = "http://www.w3.org/2000/svg";
 const WIN = { "3d": { layer: "raw", days: 3 }, "5d": { layer: "raw", days: 5 }, "1w": { layer: "q15", days: 7 }, "1m": { layer: "h1", days: 31 } };
 const SESS = ["market_open", "pre_post", "weekend"];
 const LEVELS = [0, 1000, 10000, 50000, 100000];
-const state = { sym: null, win: "1w", index: null, data: {}, view: null };
+const state = { sym: null, win: "1w", index: null, data: {}, view: null, vview: null, cost: "buy10" };
 
 const I18N = {
   zh: {
@@ -153,7 +163,12 @@ const I18N = {
     lAsk: "买价 – 卖价区间", lMid: "中价", lBps: "中价点差", lBpsMax: "时段内最大值", lBm: "基准上限", lWideDot: "超标",
     lBuy: "买入方向", lSell: "卖出方向", l10: "$10k", l50: "$50k", l100: "$100k",
     tAsk: "买价", tBid: "卖价", tMid: "中价", tBps: "点差", tBm: "基准", tBuy: "承接 买 / 卖", tImp: "冲击 10k / 50k / 100k", tSamples: "样本 / 有报价 / 达标",
-    footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价）；原始样本见 SLA 执行记录页的 CSV 与仓库 sla-data 分支。",
+    cVenue: "⑤ 跨链比价：Fluxion RFQ vs Jupiter（Solana）", cVenueD: "同一 xStock 在 Solana 上通过 Jupiter 聚合器的可成交报价（已按 Scaled UI multiplier 换算为每股）。优势 = Fluxion 比 Jupiter 省多少 bps，正值为 Fluxion 更优；±1 bps 以内算持平。",
+    cAdv: "优势走势（bps，正 = Fluxion 更优）", cCost: "相对美股价的成本（bps，越低越好）",
+    vSize: { buy10: "买入 $10k", buy100: "买入 $100k", sell10: "卖出 $10k", spread: "买卖价差" },
+    vWin: p => `Fluxion 更优 ${p}`, vWinD: (l, m) => `Jupiter 更优 ${l} · 优势中位 ${m}`, vNone: "该窗口没有跨链比价数据。",
+    lFlux: "Fluxion RFQ", lJup: "Jupiter", tVenue: "跨链比价",
+    footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价）、Jupiter 聚合器报价与 Yahoo 美股价格；原始样本见 SLA 执行记录页的 CSV 与仓库 sla-data 分支（rfq/、venue/）。",
   },
   en: {
     docTitle: "Fluxion RFQ Quote History", back: "← Back to liquidity dashboard", toSla: "SLA record →", title: "Fluxion RFQ quote history",
@@ -172,7 +187,12 @@ const I18N = {
     lAsk: "Ask – bid range", lMid: "Mid", lBps: "Mid spread", lBpsMax: "Bucket max", lBm: "Benchmark ceiling", lWideDot: "Wide",
     lBuy: "Buy side", lSell: "Sell side", l10: "$10k", l50: "$50k", l100: "$100k",
     tAsk: "Ask", tBid: "Bid", tMid: "Mid", tBps: "Spread", tBm: "Benchmark", tBuy: "Fill buy / sell", tImp: "Impact 10k / 50k / 100k", tSamples: "Samples / quoted / pass",
-    footer: "Source: Fluxion RFQ quote API ($1k–$100k probes). Raw samples are on the SLA record page (CSV) and the repository's sla-data branch.",
+    cVenue: "⑤ Cross-venue: Fluxion RFQ vs Jupiter (Solana)", cVenueD: "Executable quotes for the same xStock on Solana via the Jupiter aggregator, converted to per-share with the Scaled UI multiplier. Advantage = how many bps Fluxion saves versus Jupiter; positive means Fluxion is better, within ±1 bps is a tie.",
+    cAdv: "Advantage (bps, positive = Fluxion better)", cCost: "Cost versus the US stock price (bps, lower is better)",
+    vSize: { buy10: "Buy $10k", buy100: "Buy $100k", sell10: "Sell $10k", spread: "Bid-ask spread" },
+    vWin: p => `Fluxion better ${p}`, vWinD: (l, m) => `Jupiter better ${l} · median advantage ${m}`, vNone: "No cross-venue data in this window.",
+    lFlux: "Fluxion RFQ", lJup: "Jupiter", tVenue: "Cross-venue",
+    footer: "Sources: Fluxion RFQ quote API ($1k–$100k probes), Jupiter aggregator quotes and Yahoo US stock prices. Raw samples are on the SLA record page (CSV) and the repository's sla-data branch (rfq/, venue/).",
   },
 };
 const qsLang = new URLSearchParams(location.search).get("lang");
@@ -200,6 +220,7 @@ function applyStatic() {
   for (const e of document.querySelectorAll("[data-i18n]")) e.textContent = T()[e.dataset.i18n];
   for (const b of document.querySelectorAll("#f-lang button")) b.setAttribute("aria-pressed", b.dataset.v === LANG);
   for (const b of document.querySelectorAll("#f-win button")) b.textContent = T().win[b.dataset.v];
+  for (const b of document.querySelectorAll("#f-cost button")) b.textContent = T().vSize[b.dataset.v];
 }
 
 // ---------- data ----------
@@ -223,6 +244,8 @@ function view() {
   const w = WIN[state.win], L = D.layers[w.layer], F = D.fields, ix = Object.fromEntries(F.map((f, i) => [f, i]));
   const t1 = D.ts, t0 = t1 - w.days * 86400;
   const pts = L.points.filter(p => p[ix.t] >= t0).map(p => Object.fromEntries(F.map((f, i) => [f, p[i]])));
+  const VL = D.venue && D.venue.layers[w.layer], VF = D.venue && D.venue.fields;
+  state.vview = VL ? { pts: VL.points.filter(p => p[0] >= t0).map(p => Object.fromEntries(VF.map((f, i) => [f, p[i]]))), step: VL.step, t0, t1 } : null;
   return { D, pts, step: L.step, t0, t1 };
 }
 
@@ -232,11 +255,12 @@ function render() {
   const { D, pts } = V;
   $("#meta").textContent = T().updated + tUTC(D.ts);
   renderNow(V);
-  for (const id of ["#ch-price", "#ch-bps", "#ch-fill", "#ch-imp", "#ch-strip"]) $(id).replaceChildren();
+  for (const id of ["#ch-price", "#ch-bps", "#ch-fill", "#ch-imp", "#ch-strip", "#ch-adv", "#ch-cost", "#v-stats"]) $(id).replaceChildren();
   if (!pts.length) { $("#ch-price").append(el("div", { class: "empty", text: T().noData })); return; }
   legends();
   charts.length = 0;
   drawPrice(V); drawBps(V); drawFill(V); drawImp(V); drawStrip(V);
+  renderVenue();
 }
 
 function renderNow({ D, pts }) {
@@ -267,11 +291,42 @@ function legends() {
     .map(([c, t]) => el("span", {}, el("i", { style: `background:${c}` }), t)));
 }
 
+// ---------- cross-venue ----------
+function renderVenue() {
+  const VV = state.vview;
+  if (!VV || !VV.pts.length) { $("#v-stats").append(el("div", { class: "empty", text: T().vNone })); $("#lg-adv").replaceChildren(); $("#lg-cost").replaceChildren(); return; }
+  const P = VV.pts, sum = k => P.reduce((s, p) => s + (p[k] || 0), 0);
+  const cell = (label, w, l, c, key) => { const meds = P.map(p => p[key]).filter(v => v != null);
+    return el("div", {}, el("div", { class: "k", text: label }), el("div", { class: "v", text: T().vWin(rate(sum(w), sum(c))) }),
+      el("div", { class: "d", text: T().vWinD(rate(sum(l), sum(c)), sbps(quant(meds, .5))) })); };
+  $("#v-stats").replaceChildren(cell(T().vSize.buy10, "w_b10", "l_b10", "c_b10", "buy_adv10"),
+    cell(T().vSize.buy100, "w_b100", "l_b100", "c_b100", "buy_adv100"), cell(T().vSize.sell10, "w_s10", "l_s10", "c_s10", "sell_adv10"));
+  const lg = (id, items) => $(id).replaceChildren(...items.map(([c, t]) => el("span", {}, el("i", { class: "ln", style: `background:${c}` }), t)));
+  lg("#lg-adv", [["var(--s1)", T().vSize.buy10], ["var(--s3)", T().vSize.buy100], ["var(--s2)", T().vSize.sell10]]);
+  // 优势：对称纵轴，按 98 分位截断尖峰
+  const adv = P.flatMap(p => [p.buy_adv10, p.buy_adv100, p.sell_adv10]).filter(v => v != null);
+  const lim = Math.max(5, quant(adv.map(Math.abs), .98) * 1.15);
+  for (const p of P) for (const k of ["buy_adv10", "buy_adv100", "sell_adv10"]) p[k + "_c"] = p[k] == null ? null : Math.max(-lim, Math.min(lim, p[k]));
+  const a = frame($("#ch-adv"), 220, -lim, lim, niceTicks(-lim, lim), v => v.toFixed(0), VV, venueTip);
+  a.svg.insertBefore(sv("line", { x1: a.x0, x2: a.x1, y1: a.Y(0), y2: a.Y(0), stroke: css("--axis"), "stroke-width": 1.5 }), a.guide);
+  line(a, "buy_adv10_c", css("--s1"), 1.3); line(a, "buy_adv100_c", css("--s3"), 1.3); line(a, "sell_adv10_c", css("--s2"), 1.3);
+  // 成本：Fluxion vs Jupiter
+  const [fk, jk] = { buy10: ["f_buy10", "j_buy10"], buy100: ["f_buy100", "j_buy100"], sell10: ["f_sell10", "j_sell10"], spread: ["f_spread", "j_spread"] }[state.cost];
+  lg("#lg-cost", [["var(--s1)", T().lFlux], ["var(--s2)", T().lJup]]);
+  const vals = P.flatMap(p => [p[fk], p[jk]]).filter(v => v != null);
+  if (!vals.length) { $("#ch-cost").append(el("div", { class: "empty", text: T().vNone })); return; }
+  const lo = Math.min(0, quant(vals, .02)), hi = Math.max(5, quant(vals, .98) * 1.15);
+  for (const p of P) { p._f = p[fk] == null ? null : Math.max(lo, Math.min(hi, p[fk])); p._j = p[jk] == null ? null : Math.max(lo, Math.min(hi, p[jk])); }
+  const c = frame($("#ch-cost"), 220, lo, hi, niceTicks(lo, hi), v => v.toFixed(0), VV, venueTip);
+  if (lo < 0) c.svg.insertBefore(sv("line", { x1: c.x0, x2: c.x1, y1: c.Y(0), y2: c.Y(0), stroke: css("--axis"), "stroke-width": 1.5 }), c.guide);
+  line(c, "_j", css("--s2"), 1.3); line(c, "_f", css("--s1"), 1.5);
+}
+
 // ---------- chart frame ----------
 const charts = [];
-function frame(box, h, yMin, yMax, ticks, yfmt) {
+function frame(box, h, yMin, yMax, ticks, yfmt, src = state.view, tip = quoteTip) {
   const W = Math.max(280, box.clientWidth), x0 = 52, x1 = W - 8, y0 = 8, y1 = h - 22;
-  const { t0, t1, pts, step } = state.view;
+  const { t0, t1, pts, step } = src;
   const X = t => x0 + (t - t0) / (t1 - t0) * (x1 - x0);
   const Y = v => y1 - (v - yMin) / ((yMax - yMin) || 1) * (y1 - y0);
   const svg = sv("svg", { viewBox: `0 0 ${W} ${h}`, height: h, role: "img" });
@@ -298,7 +353,7 @@ function frame(box, h, yMin, yMax, ticks, yfmt) {
   const hit = sv("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "transparent" });
   svg.append(guide, hit);
   box.append(svg);
-  const c = { svg, X, Y, x0, x1, y0, y1, guide };
+  const c = { svg, X, Y, x0, x1, y0, y1, guide, src, tip };
   charts.push(c);
   hit.addEventListener("pointermove", ev => hover(ev, c));
   hit.addEventListener("pointerleave", () => { for (const k of charts) k.guide.setAttribute("visibility", "hidden"); $("#tip").hidden = true; });
@@ -306,7 +361,7 @@ function frame(box, h, yMin, yMax, ticks, yfmt) {
 }
 // 折线：值为空或相邻点间隔超过 1.5 个步长时断开
 function line(c, key, color, width = 1.6, dash) {
-  const { pts, step } = state.view; let d = "", prev = null;
+  const { pts, step } = c.src; let d = "", prev = null;
   for (const p of pts) {
     const v = typeof key === "function" ? key(p) : p[key];
     if (v == null) { prev = null; continue; }
@@ -316,7 +371,7 @@ function line(c, key, color, width = 1.6, dash) {
   c.svg.insertBefore(sv("path", { d, fill: "none", stroke: color, "stroke-width": width, "stroke-linejoin": "round", ...(dash ? { "stroke-dasharray": dash } : {}) }), c.guide);
 }
 function band(c, lo, hi, color) {
-  const { pts, step } = state.view; let seg = [], prev = null;
+  const { pts, step } = c.src; let seg = [], prev = null;
   const flush = () => { if (seg.length) { const top = seg.map(p => `${c.X(p.t + step / 2).toFixed(1)},${c.Y(p[hi]).toFixed(1)}`), bot = seg.slice().reverse().map(p => `${c.X(p.t + step / 2).toFixed(1)},${c.Y(p[lo]).toFixed(1)}`);
     if (seg.length === 1) { const x = c.X(seg[0].t + step / 2); top.unshift(`${(x - 1).toFixed(1)},${c.Y(seg[0][hi]).toFixed(1)}`); bot.push(`${(x - 1).toFixed(1)},${c.Y(seg[0][lo]).toFixed(1)}`); }
     c.svg.insertBefore(sv("polygon", { points: top.concat(bot).join(" "), fill: color }), c.guide); } seg = []; };
@@ -377,21 +432,31 @@ function drawStrip(V) {
 }
 
 // ---------- hover ----------
+const tipRow = (k, v) => el("div", { class: "r" }, el("span", { text: k }), el("b", { text: v }));
+function quoteTip(p, step) {
+  return [tipRow(T().tAsk, price(p.ask)), tipRow(T().tBid, price(p.bid)), tipRow(T().tBps, p.bps_max != null && step > 300 ? `${bps(p.bps)} (max ${p.bps_max.toFixed(1)})` : bps(p.bps)),
+    tipRow(T().tBm, bps(p.bm)), tipRow(T().tBuy, `${usdK(p.buy)} / ${usdK(p.sell)}`), tipRow(T().tImp, `${pctF(p.i10)} / ${pctF(p.i50)} / ${pctF(p.i100)}`),
+    tipRow(T().tSamples, `${p.n} / ${p.q} / ${p.p}`)];
+}
+const sbps = v => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1) + " bps";
+function venueTip(p) {
+  const fj = (f, j) => `${bps(p[f])} / ${bps(p[j])}`;
+  return [el("div", { class: "r" }, el("span", { text: "" }), el("b", { text: `${T().lFlux} / ${T().lJup}` })),
+    tipRow(T().vSize.buy10, fj("f_buy10", "j_buy10")), tipRow(T().vSize.buy100, fj("f_buy100", "j_buy100")),
+    tipRow(T().vSize.sell10, fj("f_sell10", "j_sell10")), tipRow(T().vSize.spread, fj("f_spread", "j_spread")),
+    tipRow("Δ " + T().vSize.buy10, sbps(p.buy_adv10)), tipRow("Δ " + T().vSize.buy100, sbps(p.buy_adv100)), tipRow("Δ " + T().vSize.sell10, sbps(p.sell_adv10))];
+}
 function hover(ev, c) {
-  const { pts, step } = state.view;
+  const { pts, step, t0, t1 } = c.src;
   const r = c.svg.getBoundingClientRect(), vb = c.svg.viewBox.baseVal, x = (ev.clientX - r.left) / r.width * vb.width;
-  const t = state.view.t0 + (x - c.x0) / (c.x1 - c.x0) * (state.view.t1 - state.view.t0);
+  const t = t0 + (x - c.x0) / (c.x1 - c.x0) * (t1 - t0);
   let lo = 0, hi = pts.length - 1;
   while (lo < hi) { const m = (lo + hi) >> 1; if (pts[m].t + step / 2 < t) lo = m + 1; else hi = m; }
   const p = [pts[lo], pts[lo - 1]].filter(Boolean).sort((a, b) => Math.abs(a.t + step / 2 - t) - Math.abs(b.t + step / 2 - t))[0];
   if (!p || Math.abs(p.t + step / 2 - t) > step * 2) { $("#tip").hidden = true; return; }
   for (const k of charts) { const gx = k.X(p.t + step / 2); k.guide.setAttribute("x1", gx); k.guide.setAttribute("x2", gx); k.guide.setAttribute("visibility", "visible"); }
-  const row = (k, v) => el("div", { class: "r" }, el("span", { text: k }), el("b", { text: v }));
   const tip = $("#tip");
-  tip.replaceChildren(el("div", { class: "t", text: `${tUTC(p.t)} · ${T().sess[SESS[p.sess]]}` }),
-    row(T().tAsk, price(p.ask)), row(T().tBid, price(p.bid)), row(T().tBps, p.bps_max != null && step > 300 ? `${bps(p.bps)} (max ${p.bps_max.toFixed(1)})` : bps(p.bps)),
-    row(T().tBm, bps(p.bm)), row(T().tBuy, `${usdK(p.buy)} / ${usdK(p.sell)}`), row(T().tImp, `${pctF(p.i10)} / ${pctF(p.i50)} / ${pctF(p.i100)}`),
-    row(T().tSamples, `${p.n} / ${p.q} / ${p.p}`));
+  tip.replaceChildren(el("div", { class: "t", text: `${tUTC(p.t)} · ${T().sess[SESS[p.sess]]}` }), ...c.tip(p, step));
   tip.hidden = false;
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(innerWidth - tw - 8, ev.clientX + 14) + "px";
@@ -405,6 +470,9 @@ $("#f-sym").addEventListener("click", e => { const b = e.target.closest("button"
 $("#f-win").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
   for (const x of $("#f-win").querySelectorAll("button")) x.setAttribute("aria-pressed", x === b);
   state.win = b.dataset.v; render(); });
+$("#f-cost").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  for (const x of $("#f-cost").querySelectorAll("button")) x.setAttribute("aria-pressed", x === b);
+  state.cost = b.dataset.v; render(); });
 $("#f-lang").addEventListener("click", e => { const b = e.target.closest("button"); if (!b || b.dataset.v === LANG) return;
   LANG = b.dataset.v; try { localStorage.setItem("fluxmon.lang", LANG); } catch (err) {}
   applyStatic(); render(); });
