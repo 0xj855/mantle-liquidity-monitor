@@ -84,7 +84,7 @@ footer{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
 <div class="wrap">
   <header>
     <div>
-      <a class="back" href="./" data-i18n="back"></a>
+      <div style="display:flex;gap:14px"><a class="back" href="./" data-i18n="back"></a><a class="back" href="rfq.html" data-i18n="toRfq"></a></div>
       <h1 data-i18n="title"></h1>
       <div class="sub" id="subtitle"></div>
     </div>
@@ -125,7 +125,7 @@ const SESS = ["all", "market_open", "pre_post", "weekend"];
 
 const I18N = {
   zh: {
-    docTitle: "Fluxion RFQ SLA 执行记录", back: "← 返回流动性看板", title: "Fluxion RFQ SLA 执行记录",
+    docTitle: "Fluxion RFQ SLA 执行记录", back: "← 返回流动性看板", toRfq: "报价历史 →", title: "Fluxion RFQ SLA 执行记录",
     subtitle: d => `10 个指定 xStocks 的 RFQ 报价，约每 5 分钟采样一次，记录始于 ${d}（UTC）。达标 = 中价点差不超过该时段 Tier 基准上限；盘中缺报价计为不达标，盘前盘后与周末没有报价的样本不计入考核。`,
     period: "期间", session: "时段", p7: "近 7 天", p30: "近 30 天", month: m => m,
     sess: { all: "全部时段", market_open: "盘中", pre_post: "盘前盘后", weekend: "周末 / 休市" },
@@ -142,7 +142,7 @@ const I18N = {
     footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价），SLA 基准与 Tier 见仓库 config/config.json → rfq_sla。原始样本同时保存在仓库 sla-data 分支。",
   },
   en: {
-    docTitle: "Fluxion RFQ SLA Record", back: "← Back to liquidity dashboard", title: "Fluxion RFQ SLA record",
+    docTitle: "Fluxion RFQ SLA Record", back: "← Back to liquidity dashboard", toRfq: "Quote history →", title: "Fluxion RFQ SLA record",
     subtitle: d => `RFQ quotes for the 10 designated xStocks, sampled about every 5 minutes since ${d} (UTC). Pass = mid spread at or below the session's tier benchmark ceiling; missing quotes in market hours count as failures, and unquoted samples outside market hours are not assessed.`,
     period: "Period", session: "Session", p7: "Last 7 days", p30: "Last 30 days", month: m => m,
     sess: { all: "All sessions", market_open: "Market open", pre_post: "Pre / post", weekend: "Weekend / holiday" },

@@ -459,6 +459,7 @@ def run(args):
         sla_dir = Path(os.environ.get("FLUXMON_SLA_DIR") or ROOT / "data" / "sla")
         print("sla rows appended:", sla.export(store, sla_dir))
         (out_dir / "sla.json").write_text(json.dumps(clean(sla.summarize(sla_dir, now)), separators=(",", ":")))
+        print("rfq series:", sla.export_series(sla_dir, out_dir / "rfq", now))
     except Exception as e:
         print("sla export failed:", repr(e))
         (out_dir / "sla.json").write_text(json.dumps({"ts": now, "error": "sla summary failed"}))

@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fluxion RFQ Quote History</title>
+<meta name="description" content="Fluxion RFQ quote history for Mantle xStocks over 3 days to 1 month: bid/ask, mid spread versus SLA benchmark, fill depth, price impact and quote uptime.">
+<style>
+:root{
+  color-scheme:light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10); --hover:rgba(11,11,11,.04);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#7a5bd1; --band:rgba(42,120,214,.16);
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b; --none:#dedcd3;
+  --sess-open:rgba(42,120,214,.07); --sess-pp:rgba(11,11,11,.025);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
+    --s1:#3987e5; --s2:#d95926; --s3:#9b82ea; --band:rgba(57,135,229,.24);
+    --good:#12b812; --warning:#e5a514; --critical:#e05353; --none:#353531;
+    --sess-open:rgba(57,135,229,.10); --sess-pp:rgba(255,255,255,.03);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink-2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --hover:rgba(255,255,255,.05);
+  --s1:#3987e5; --s2:#d95926; --s3:#9b82ea; --band:rgba(57,135,229,.24);
+  --good:#12b812; --warning:#e5a514; --critical:#e05353; --none:#353531;
+  --sess-open:rgba(57,135,229,.10); --sess-pp:rgba(255,255,255,.03);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+a:focus-visible,button:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:20px}
+.back{color:var(--muted);font-size:13px;text-decoration:none}
+.back:hover{color:var(--ink-2)}
+.links{display:flex;gap:14px}
+h1{font-size:22px;font-weight:650;margin:4px 0 0;letter-spacing:-.01em}
+.sub{color:var(--ink-2);margin-top:2px;max-width:75ch}
+.head-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.meta{color:var(--muted);font-size:13px;text-align:right}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--ring);border-radius:8px;background:var(--surface);padding:2px}
+.seg button{border:0;background:none;color:var(--ink-2);font:inherit;font-size:13px;padding:5px 11px;border-radius:6px;cursor:pointer}
+.seg button:hover{background:var(--hover)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);font-weight:550}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:12px;padding:16px;margin-bottom:16px;min-width:0}
+.card h2{font-size:15px;font-weight:620;margin:0 0 2px}
+.card .desc{color:var(--muted);font-size:12.5px;margin:0 0 10px;max-width:95ch}
+.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.now>div{border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
+.now .k{color:var(--muted);font-size:12px}
+.now .v{font-size:18px;font-weight:620;margin-top:2px;font-variant-numeric:tabular-nums}
+.now .d{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.row-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;margin:16px 0 8px}
+.row-h h3{font-size:13px;font-weight:600;margin:0;color:var(--ink-2)}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px}
+.chip.pass{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.chip.wide{background:color-mix(in srgb,var(--warning) 22%,transparent);color:var(--ink)}
+.chip.miss{background:color-mix(in srgb,var(--critical) 14%,transparent);color:var(--critical)}
+.chip.off{background:var(--hover);color:var(--muted)}
+.chip.nobid{background:color-mix(in srgb,var(--warning) 22%,transparent);color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:12px;height:10px;border-radius:2px}
+.legend i.ln{height:2px}
+.legend i.dash{height:0;border-top:2px dashed var(--critical);background:none}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;overflow:visible;touch-action:pan-y}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--ring);border-radius:8px;padding:8px 10px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.14);z-index:10;min-width:200px;font-variant-numeric:tabular-nums}
+.tip .t{color:var(--muted);margin-bottom:4px}
+.tip .r{display:flex;justify-content:space-between;gap:14px}
+.tip .r span{color:var(--ink-2)}
+.empty{color:var(--muted);padding:24px 0;text-align:center}
+footer{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="links"><a class="back" href="./" data-i18n="back"></a><a class="back" href="sla.html" data-i18n="toSla"></a></div>
+      <h1 data-i18n="title"></h1>
+      <div class="sub" data-i18n="subtitle"></div>
+    </div>
+    <div class="head-r">
+      <div class="seg" id="f-lang" aria-label="Language">
+        <button data-v="zh" aria-pressed="false">中文</button>
+        <button data-v="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="meta" id="meta">…</div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg" id="f-sym" aria-label="Token"></div>
+    <div class="seg" id="f-win" aria-label="Window">
+      <button data-v="3d" aria-pressed="false"></button>
+      <button data-v="5d" aria-pressed="false"></button>
+      <button data-v="1w" aria-pressed="true"></button>
+      <button data-v="1m" aria-pressed="false"></button>
+    </div>
+  </div>
+
+  <section class="card" id="now"></section>
+  <section class="card"><h2 data-i18n="cPrice"></h2><p class="desc" data-i18n="cPriceD"></p><div class="legend" id="lg-price"></div><div class="chart" id="ch-price"></div></section>
+  <section class="card"><h2 data-i18n="cBps"></h2><p class="desc" data-i18n="cBpsD"></p><div class="legend" id="lg-bps"></div><div class="chart" id="ch-bps"></div></section>
+  <section class="card"><h2 data-i18n="cDepth"></h2><p class="desc" data-i18n="cDepthD"></p>
+    <div class="grid2">
+      <div><div class="legend" id="lg-fill"></div><div class="chart" id="ch-fill"></div></div>
+      <div><div class="legend" id="lg-imp"></div><div class="chart" id="ch-imp"></div></div>
+    </div>
+  </section>
+  <section class="card"><h2 data-i18n="cStrip"></h2><p class="desc" data-i18n="cStripD"></p><div class="legend" id="lg-strip"></div><div class="chart" id="ch-strip"></div></section>
+  <footer data-i18n="footer"></footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+const WIN = { "3d": { layer: "raw", days: 3 }, "5d": { layer: "raw", days: 5 }, "1w": { layer: "q15", days: 7 }, "1m": { layer: "h1", days: 31 } };
+const SESS = ["market_open", "pre_post", "weekend"];
+const LEVELS = [0, 1000, 10000, 50000, 100000];
+const state = { sym: null, win: "1w", index: null, data: {}, view: null };
+
+const I18N = {
+  zh: {
+    docTitle: "Fluxion RFQ 报价历史", back: "← 返回流动性看板", toSla: "SLA 执行记录 →", title: "Fluxion RFQ 报价历史",
+    subtitle: "10 个指定 xStocks 的 RFQ 报价走势，约每 5 分钟采样一次（时间为 UTC）。3 天和 5 天显示 5 分钟原始点，1 周按 15 分钟、1 月按 1 小时取中位数。",
+    win: { "3d": "3 天", "5d": "5 天", "1w": "1 周", "1m": "1 月" },
+    loadFail: "数据加载失败：", noData: "该窗口还没有数据。", updated: "更新于 ",
+    sess: { market_open: "盘中", pre_post: "盘前盘后", weekend: "周末 / 休市" },
+    status: { pass: "达标", wide: "超标", no_bid: "缺卖价", missing_open: "盘中缺报价", unquoted_off_hours: "非盘中无报价" },
+    nowTitle: "当前报价", winStats: w => `${w} 窗口统计`,
+    kAsk: "买价 Ask ($1k)", kBid: "卖价 Bid ($1k)", kBps: "中价点差", kBpsD: bm => `基准上限 ${bm}`, kFill: "最大承接 买 / 卖", kState: "状态",
+    kUp: "报价在线率", kPass: "达标率", kPassD: "达标 / 考核样本", kMed: "点差 中位 / P90", kWide: "超标次数", kMiss: "盘中缺报价", kDepth: "最大承接（中位）",
+    cPrice: "① 报价走势", cPriceD: "$1k 档卖价–买价区间与中价；背景深色为盘中、浅色为盘前盘后、留白为周末 / 休市；无报价时断开。",
+    cBps: "② 中价点差 vs 基准", cBpsD: "中价点差（bps）与该时段 Tier 基准上限；超过基准的点标红。按时间聚合时浅色区间为该时段内的最大值。",
+    cDepth: "③ 承接深度", cDepthD: "左：RFQ 在 $1k / $10k / $50k / $100k 档中最大能成交的规模；右：买入各档相对 $1k 价格的冲击（%）。",
+    cStrip: "④ 报价在线条", cStripD: "每格一个采样点（或聚合时段）：达标、超标、盘中缺报价、非盘中无报价。",
+    lAsk: "买价 – 卖价区间", lMid: "中价", lBps: "中价点差", lBpsMax: "时段内最大值", lBm: "基准上限", lWideDot: "超标",
+    lBuy: "买入方向", lSell: "卖出方向", l10: "$10k", l50: "$50k", l100: "$100k",
+    tAsk: "买价", tBid: "卖价", tMid: "中价", tBps: "点差", tBm: "基准", tBuy: "承接 买 / 卖", tImp: "冲击 10k / 50k / 100k", tSamples: "样本 / 有报价 / 达标",
+    footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价）；原始样本见 SLA 执行记录页的 CSV 与仓库 sla-data 分支。",
+  },
+  en: {
+    docTitle: "Fluxion RFQ Quote History", back: "← Back to liquidity dashboard", toSla: "SLA record →", title: "Fluxion RFQ quote history",
+    subtitle: "RFQ quotes for the 10 designated xStocks, sampled about every 5 minutes (times in UTC). 3d and 5d show raw 5-minute samples; 1w uses 15-minute and 1m hourly medians.",
+    win: { "3d": "3d", "5d": "5d", "1w": "1w", "1m": "1m" },
+    loadFail: "Failed to load data: ", noData: "No data in this window yet.", updated: "Updated ",
+    sess: { market_open: "Market open", pre_post: "Pre / post", weekend: "Weekend / holiday" },
+    status: { pass: "Pass", wide: "Wide", no_bid: "No bid", missing_open: "Missing (open)", unquoted_off_hours: "Unquoted off-hours" },
+    nowTitle: "Latest quote", winStats: w => `${w} window`,
+    kAsk: "Ask ($1k)", kBid: "Bid ($1k)", kBps: "Mid spread", kBpsD: bm => `Benchmark ceiling ${bm}`, kFill: "Max fill buy / sell", kState: "Status",
+    kUp: "Quote uptime", kPass: "Pass rate", kPassD: "Pass / assessed samples", kMed: "Spread median / P90", kWide: "Wide samples", kMiss: "Missing in market hours", kDepth: "Max fill (median)",
+    cPrice: "① Quotes", cPriceD: "$1k ask–bid range and mid. Darker background = market open, lighter = pre/post, blank = weekend/holiday; gaps mean no quote.",
+    cBps: "② Mid spread vs benchmark", cBpsD: "Mid spread (bps) and the session's tier benchmark ceiling; points above it are red. For aggregated windows the light area shows the max within each bucket.",
+    cDepth: "③ Fill depth", cDepthD: "Left: largest size the RFQ fills among $1k / $10k / $50k / $100k. Right: buy impact of each size versus the $1k price (%).",
+    cStrip: "④ Quote uptime strip", cStripD: "One cell per sample (or bucket): pass, wide, missing in market hours, unquoted off-hours.",
+    lAsk: "Ask – bid range", lMid: "Mid", lBps: "Mid spread", lBpsMax: "Bucket max", lBm: "Benchmark ceiling", lWideDot: "Wide",
+    lBuy: "Buy side", lSell: "Sell side", l10: "$10k", l50: "$50k", l100: "$100k",
+    tAsk: "Ask", tBid: "Bid", tMid: "Mid", tBps: "Spread", tBm: "Benchmark", tBuy: "Fill buy / sell", tImp: "Impact 10k / 50k / 100k", tSamples: "Samples / quoted / pass",
+    footer: "Source: Fluxion RFQ quote API ($1k–$100k probes). Raw samples are on the SLA record page (CSV) and the repository's sla-data branch.",
+  },
+};
+const qsLang = new URLSearchParams(location.search).get("lang");
+let saved = null; try { saved = localStorage.getItem("fluxmon.lang"); } catch (e) {}
+let LANG = ["zh", "en"].includes(qsLang) ? qsLang : ["zh", "en"].includes(saved) ? saved : (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+const T = () => I18N[LANG];
+
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? e.className = v : k === "text" ? e.textContent = v : e.setAttribute(k, v);
+  for (const k of kids) if (k != null) e.append(k); return e; };
+const sv = (tag, attrs = {}) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const price = v => v == null ? "–" : "$" + (v >= 100 ? v.toFixed(2) : v.toFixed(3));
+const bps = v => v == null ? "–" : v.toFixed(1) + " bps";
+const usdK = v => v == null ? "–" : v >= 1000 ? "$" + Math.round(v / 1000) + "K" : "$" + Math.round(v);
+const pctF = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(d) + "%";
+const rate = (a, b) => b ? (a / b * 100).toFixed(1) + "%" : "–";
+const pad = n => String(n).padStart(2, "0");
+const tUTC = t => { const d = new Date(t * 1000); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`; };
+const quant = (xs, p) => { if (!xs.length) return null; const s = xs.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.round(p * (s.length - 1)))]; };
+
+function applyStatic() {
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.title = T().docTitle;
+  for (const e of document.querySelectorAll("[data-i18n]")) e.textContent = T()[e.dataset.i18n];
+  for (const b of document.querySelectorAll("#f-lang button")) b.setAttribute("aria-pressed", b.dataset.v === LANG);
+  for (const b of document.querySelectorAll("#f-win button")) b.textContent = T().win[b.dataset.v];
+}
+
+// ---------- data ----------
+async function getJSON(url) { const r = await fetch(url + "?t=" + Math.floor(Date.now() / 60000)); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }
+async function loadIndex() {
+  try {
+    state.index = await getJSON("data/rfq/index.json");
+    const qs = new URLSearchParams(location.search).get("sym");
+    state.sym = state.index.symbols.includes(qs) ? qs : state.sym && state.index.symbols.includes(state.sym) ? state.sym : state.index.symbols[0];
+    $("#f-sym").replaceChildren(...state.index.symbols.map(s => el("button", { "data-v": s, "aria-pressed": String(s === state.sym), text: s })));
+    await loadSym();
+  } catch (e) { $("#meta").textContent = T().loadFail + e.message; }
+}
+async function loadSym() {
+  try { state.data[state.sym] = await getJSON(`data/rfq/${encodeURIComponent(state.sym)}.json`); render(); }
+  catch (e) { $("#meta").textContent = T().loadFail + e.message; }
+}
+
+function view() {
+  const D = state.data[state.sym]; if (!D) return null;
+  const w = WIN[state.win], L = D.layers[w.layer], F = D.fields, ix = Object.fromEntries(F.map((f, i) => [f, i]));
+  const t1 = D.ts, t0 = t1 - w.days * 86400;
+  const pts = L.points.filter(p => p[ix.t] >= t0).map(p => Object.fromEntries(F.map((f, i) => [f, p[i]])));
+  return { D, pts, step: L.step, t0, t1 };
+}
+
+// ---------- render ----------
+function render() {
+  const V = state.view = view(); if (!V) return;
+  const { D, pts } = V;
+  $("#meta").textContent = T().updated + tUTC(D.ts);
+  renderNow(V);
+  for (const id of ["#ch-price", "#ch-bps", "#ch-fill", "#ch-imp", "#ch-strip"]) $(id).replaceChildren();
+  if (!pts.length) { $("#ch-price").append(el("div", { class: "empty", text: T().noData })); return; }
+  legends();
+  charts.length = 0;
+  drawPrice(V); drawBps(V); drawFill(V); drawImp(V); drawStrip(V);
+}
+
+function renderNow({ D, pts }) {
+  const L = D.latest, st = L.status;
+  const chipCls = { pass: "pass", wide: "wide", no_bid: "nobid", missing_open: "miss", unquoted_off_hours: "off" }[st] || "off";
+  const cell = (k, v, d) => el("div", {}, el("div", { class: "k", text: k }), typeof v === "string" ? el("div", { class: "v", text: v }) : el("div", { class: "v" }, v), d ? el("div", { class: "d", text: d }) : null);
+  const n = pts.reduce((s, p) => s + p.n, 0), q = pts.reduce((s, p) => s + p.q, 0), e = pts.reduce((s, p) => s + p.e, 0), pa = pts.reduce((s, p) => s + p.p, 0), w = pts.reduce((s, p) => s + p.w, 0);
+  const miss = pts.reduce((s, p) => s + (p.sess === 0 ? p.n - p.q : 0), 0);
+  const spreads = pts.map(p => p.bps).filter(v => v != null), fills = pts.filter(p => p.q).map(p => p.buy).filter(v => v != null);
+  $("#now").replaceChildren(
+    el("div", { class: "row-h", style: "margin-top:0" }, el("h3", { text: `${T().nowTitle} · ${D.symbol} · ${D.tier}` }), el("span", { class: "d", style: "color:var(--muted);font-size:12px", text: `${tUTC(L.ts)} · ${T().sess[L.session] || L.session}` })),
+    el("div", { class: "now" },
+      cell(T().kAsk, price(L.ask)), cell(T().kBid, price(L.bid)), cell(T().kBps, bps(L.bps), T().kBpsD(bps(L.bm))),
+      cell(T().kFill, `${usdK(L.buy)} / ${usdK(L.sell)}`), cell(T().kState, el("span", { class: "chip " + chipCls, text: T().status[st] || st || "–" }))),
+    el("div", { class: "row-h" }, el("h3", { text: T().winStats(T().win[state.win]) })),
+    el("div", { class: "now" },
+      cell(T().kUp, rate(q, n)), cell(T().kPass, rate(pa, e), T().kPassD), cell(T().kMed, `${bps(quant(spreads, .5))} / ${bps(quant(spreads, .9))}`),
+      cell(T().kWide, String(w)), cell(T().kMiss, String(miss)), cell(T().kDepth, usdK(quant(fills, .5)))));
+}
+
+function legends() {
+  const lg = (id, items) => $(id).replaceChildren(...items.map(([c, t, cls]) => el("span", {}, el("i", { class: cls || "", style: cls === "dash" ? "" : `background:${c}` }), t)));
+  lg("#lg-price", [["var(--band)", T().lAsk], ["var(--s1)", T().lMid, "ln"]]);
+  lg("#lg-bps", [["var(--s1)", T().lBps, "ln"], ...(state.win === "3d" || state.win === "5d" ? [] : [["var(--band)", T().lBpsMax]]), ["", T().lBm, "dash"], ["var(--critical)", T().lWideDot]]);
+  lg("#lg-fill", [["var(--s1)", T().lBuy, "ln"], ["var(--s2)", T().lSell, "ln"]]);
+  lg("#lg-imp", [["var(--s1)", T().l10, "ln"], ["var(--s3)", T().l50, "ln"], ["var(--s2)", T().l100, "ln"]]);
+  $("#lg-strip").replaceChildren(...[["var(--good)", T().status.pass], ["var(--warning)", T().status.wide], ["var(--critical)", T().status.missing_open], ["var(--none)", T().status.unquoted_off_hours]]
+    .map(([c, t]) => el("span", {}, el("i", { style: `background:${c}` }), t)));
+}
+
+// ---------- chart frame ----------
+const charts = [];
+function frame(box, h, yMin, yMax, ticks, yfmt) {
+  const W = Math.max(280, box.clientWidth), x0 = 52, x1 = W - 8, y0 = 8, y1 = h - 22;
+  const { t0, t1, pts, step } = state.view;
+  const X = t => x0 + (t - t0) / (t1 - t0) * (x1 - x0);
+  const Y = v => y1 - (v - yMin) / ((yMax - yMin) || 1) * (y1 - y0);
+  const svg = sv("svg", { viewBox: `0 0 ${W} ${h}`, height: h, role: "img" });
+  const g = sv("g");
+  // 时段背景
+  for (const p of pts) {
+    if (p.sess === 2) continue;
+    g.append(sv("rect", { x: X(p.t), y: y0, width: Math.max(0.5, X(p.t + step) - X(p.t)), height: y1 - y0, fill: p.sess === 0 ? css("--sess-open") : css("--sess-pp") }));
+  }
+  for (const v of ticks) {
+    g.append(sv("line", { x1: x0, x2: x1, y1: Y(v), y2: Y(v), stroke: css("--grid"), "stroke-width": 1 }));
+    const tx = sv("text", { x: x0 - 6, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: css("--muted") }); tx.textContent = yfmt(v); g.append(tx);
+  }
+  // 时间轴：按天打点
+  const day = 86400, every = state.win === "1m" ? 5 : state.win === "1w" ? 1 : 1;
+  for (let d = Math.ceil(t0 / day) * day, i = 0; d <= t1; d += day, i++) {
+    if (i % every) continue;
+    g.append(sv("line", { x1: X(d), x2: X(d), y1: y0, y2: y1, stroke: css("--grid"), "stroke-width": 1, "stroke-dasharray": "2 3" }));
+    const dd = new Date(d * 1000), tx = sv("text", { x: X(d), y: h - 6, "text-anchor": "middle", "font-size": 11, fill: css("--muted") });
+    tx.textContent = `${dd.getUTCMonth() + 1}/${dd.getUTCDate()}`; g.append(tx);
+  }
+  svg.append(g);
+  const guide = sv("line", { y1: y0, y2: y1, stroke: css("--ink-2"), "stroke-width": 1, visibility: "hidden" });
+  const hit = sv("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "transparent" });
+  svg.append(guide, hit);
+  box.append(svg);
+  const c = { svg, X, Y, x0, x1, y0, y1, guide };
+  charts.push(c);
+  hit.addEventListener("pointermove", ev => hover(ev, c));
+  hit.addEventListener("pointerleave", () => { for (const k of charts) k.guide.setAttribute("visibility", "hidden"); $("#tip").hidden = true; });
+  return c;
+}
+// 折线：值为空或相邻点间隔超过 1.5 个步长时断开
+function line(c, key, color, width = 1.6, dash) {
+  const { pts, step } = state.view; let d = "", prev = null;
+  for (const p of pts) {
+    const v = typeof key === "function" ? key(p) : p[key];
+    if (v == null) { prev = null; continue; }
+    d += (prev && p.t - prev.t <= step * 1.5 ? "L" : "M") + c.X(p.t + step / 2).toFixed(1) + "," + c.Y(v).toFixed(1);
+    prev = p;
+  }
+  c.svg.insertBefore(sv("path", { d, fill: "none", stroke: color, "stroke-width": width, "stroke-linejoin": "round", ...(dash ? { "stroke-dasharray": dash } : {}) }), c.guide);
+}
+function band(c, lo, hi, color) {
+  const { pts, step } = state.view; let seg = [], prev = null;
+  const flush = () => { if (seg.length) { const top = seg.map(p => `${c.X(p.t + step / 2).toFixed(1)},${c.Y(p[hi]).toFixed(1)}`), bot = seg.slice().reverse().map(p => `${c.X(p.t + step / 2).toFixed(1)},${c.Y(p[lo]).toFixed(1)}`);
+    if (seg.length === 1) { const x = c.X(seg[0].t + step / 2); top.unshift(`${(x - 1).toFixed(1)},${c.Y(seg[0][hi]).toFixed(1)}`); bot.push(`${(x - 1).toFixed(1)},${c.Y(seg[0][lo]).toFixed(1)}`); }
+    c.svg.insertBefore(sv("polygon", { points: top.concat(bot).join(" "), fill: color }), c.guide); } seg = []; };
+  for (const p of pts) {
+    if (p[lo] == null || p[hi] == null || (prev && p.t - prev.t > step * 1.5)) flush();
+    if (p[lo] != null && p[hi] != null) seg.push(p);
+    prev = p;
+  }
+  flush();
+}
+const niceTicks = (lo, hi, n = 4) => { const span = hi - lo || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw)), st = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || raw;
+  const out = []; for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) out.push(+v.toFixed(10)); return out; };
+
+function drawPrice(V) {
+  const vals = V.pts.flatMap(p => [p.ask, p.bid]).filter(v => v != null);
+  if (!vals.length) { $("#ch-price").append(el("div", { class: "empty", text: T().noData })); return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals); const padv = (hi - lo) * 0.08 || hi * 0.002; lo -= padv; hi += padv;
+  const c = frame($("#ch-price"), 240, lo, hi, niceTicks(lo, hi), v => "$" + (v >= 100 ? v.toFixed(0) : v.toFixed(2)));
+  band(c, "bid", "ask", css("--band")); line(c, "mid", css("--s1"), 1.4);
+}
+function drawBps(V) {
+  const agg = state.win === "1w" || state.win === "1m";
+  const vals = V.pts.map(p => p.bps).filter(v => v != null), bms = V.pts.map(p => p.bm).filter(v => v != null);
+  const hi = Math.max(1, (Math.max(0, ...bms)) * 1.6, (quant(vals, .98) || 0) * 1.15);
+  const c = frame($("#ch-bps"), 220, 0, hi, niceTicks(0, hi), v => v.toFixed(0));
+  for (const p of V.pts) {   // 超出纵轴上限的尖峰压到顶边
+    p.bps_c = p.bps == null ? null : Math.min(p.bps, hi);
+    p.bps_max_c = p.bps_max == null ? null : Math.min(p.bps_max, hi);
+  }
+  if (agg) band(c, "bps_c", "bps_max_c", css("--band"));
+  line(c, "bps_c", css("--s1"), 1.4);
+  line(c, "bm", css("--critical"), 1.4, "5 4");
+  const { step } = V;
+  for (const p of V.pts) if (p.bps != null && p.bm != null && p.bps > p.bm)
+    c.svg.insertBefore(sv("circle", { cx: c.X(p.t + step / 2), cy: c.Y(Math.min(p.bps, hi)), r: agg ? 2.2 : 1.8, fill: css("--critical") }), c.guide);
+}
+function drawFill(V) {
+  // 规模档位是离散的：按档位序号作纵轴（聚合中位数落在两档之间时线性插值）
+  const lv = v => { if (v == null) return null; for (let i = 1; i < LEVELS.length; i++) if (v <= LEVELS[i]) return i - 1 + (v - LEVELS[i - 1]) / (LEVELS[i] - LEVELS[i - 1]); return LEVELS.length - 1; };
+  const c = frame($("#ch-fill"), 200, 0, LEVELS.length - 1, LEVELS.map((_, i) => i), i => usdK(LEVELS[i]));
+  line(c, p => p.q ? lv(p.buy) : null, css("--s1"), 1.6); line(c, p => p.q ? lv(p.sell) : null, css("--s2"), 1.6, "4 3");
+}
+function drawImp(V) {
+  const vals = V.pts.flatMap(p => [p.i10, p.i50, p.i100]).filter(v => v != null);
+  if (!vals.length) { $("#ch-imp").append(el("div", { class: "empty", text: T().noData })); return; }
+  let lo = Math.min(0, ...vals), hi = Math.max(0.05, quant(vals, .99) * 1.15);
+  const c = frame($("#ch-imp"), 200, lo, hi, niceTicks(lo, hi), v => v.toFixed(2) + "%");
+  line(c, "i10", css("--s1"), 1.4); line(c, "i50", css("--s3"), 1.4); line(c, "i100", css("--s2"), 1.4);
+}
+function drawStrip(V) {
+  const c = frame($("#ch-strip"), 70, 0, 1, [], () => "");
+  const { step } = V;
+  for (const p of V.pts) {
+    const unq = p.n - p.q;
+    const color = unq > p.n / 2 ? (p.sess === 0 ? css("--critical") : css("--none")) : p.w > p.p ? css("--warning") : css("--good");
+    c.svg.insertBefore(sv("rect", { x: c.X(p.t), y: c.y0 + 8, width: Math.max(1, c.X(p.t + step) - c.X(p.t) - (step <= 300 ? 0 : 0.5)), height: c.y1 - c.y0 - 16, fill: color }), c.guide);
+  }
+}
+
+// ---------- hover ----------
+function hover(ev, c) {
+  const { pts, step } = state.view;
+  const r = c.svg.getBoundingClientRect(), vb = c.svg.viewBox.baseVal, x = (ev.clientX - r.left) / r.width * vb.width;
+  const t = state.view.t0 + (x - c.x0) / (c.x1 - c.x0) * (state.view.t1 - state.view.t0);
+  let lo = 0, hi = pts.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (pts[m].t + step / 2 < t) lo = m + 1; else hi = m; }
+  const p = [pts[lo], pts[lo - 1]].filter(Boolean).sort((a, b) => Math.abs(a.t + step / 2 - t) - Math.abs(b.t + step / 2 - t))[0];
+  if (!p || Math.abs(p.t + step / 2 - t) > step * 2) { $("#tip").hidden = true; return; }
+  for (const k of charts) { const gx = k.X(p.t + step / 2); k.guide.setAttribute("x1", gx); k.guide.setAttribute("x2", gx); k.guide.setAttribute("visibility", "visible"); }
+  const row = (k, v) => el("div", { class: "r" }, el("span", { text: k }), el("b", { text: v }));
+  const tip = $("#tip");
+  tip.replaceChildren(el("div", { class: "t", text: `${tUTC(p.t)} · ${T().sess[SESS[p.sess]]}` }),
+    row(T().tAsk, price(p.ask)), row(T().tBid, price(p.bid)), row(T().tBps, p.bps_max != null && step > 300 ? `${bps(p.bps)} (max ${p.bps_max.toFixed(1)})` : bps(p.bps)),
+    row(T().tBm, bps(p.bm)), row(T().tBuy, `${usdK(p.buy)} / ${usdK(p.sell)}`), row(T().tImp, `${pctF(p.i10)} / ${pctF(p.i50)} / ${pctF(p.i100)}`),
+    row(T().tSamples, `${p.n} / ${p.q} / ${p.p}`));
+  tip.hidden = false;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(innerWidth - tw - 8, ev.clientX + 14) + "px";
+  tip.style.top = Math.min(innerHeight - th - 8, ev.clientY + 14) + "px";
+}
+
+// ---------- controls ----------
+$("#f-sym").addEventListener("click", e => { const b = e.target.closest("button"); if (!b || b.dataset.v === state.sym) return;
+  for (const x of $("#f-sym").querySelectorAll("button")) x.setAttribute("aria-pressed", x === b);
+  state.sym = b.dataset.v; state.data[state.sym] ? render() : loadSym(); });
+$("#f-win").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
+  for (const x of $("#f-win").querySelectorAll("button")) x.setAttribute("aria-pressed", x === b);
+  state.win = b.dataset.v; render(); });
+$("#f-lang").addEventListener("click", e => { const b = e.target.closest("button"); if (!b || b.dataset.v === LANG) return;
+  LANG = b.dataset.v; try { localStorage.setItem("fluxmon.lang", LANG); } catch (err) {}
+  applyStatic(); render(); });
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(render, 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+applyStatic(); loadIndex();
+setInterval(() => { state.data = {}; loadIndex(); }, 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>

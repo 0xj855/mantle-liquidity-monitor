@@ -158,3 +158,67 @@ def summarize(out_dir, now):
     periods.update({f"m:{m}": v for m, v in months.items()})
     return {"ts": now, "first_ts": first, "tiers": tiers, "periods": periods, "daily": daily,
             "months": sorted(months, reverse=True), "statuses": STATUSES}
+
+
+# ---------- 报价历史（rfq.html）：按标的输出分层降采样的时间序列 ----------
+SERIES_LAYERS = {"raw": (300, 5), "q15": (900, 7), "h1": (3600, 31)}   # 名称: (步长秒, 覆盖天数)
+SERIES_FIELDS = ["t", "sess", "n", "q", "e", "p", "w", "ask", "bid", "mid", "bps", "bps_max", "bm", "buy", "sell", "i10", "i50", "i100"]
+SESS_CODE = {"market_open": 0, "pre_post": 1, "weekend": 2}
+
+
+def _series_rows(rfq_dir, since):
+    """读最近两个月的明细，返回 ts >= since 的完整样本（含报价字段）。"""
+    out = []
+    for path in sorted(Path(rfq_dir).glob("*.csv"))[-2:]:
+        with path.open() as f:
+            for r in csv.DictReader(f):
+                ts = int(r["ts"])
+                if ts >= since:
+                    out.append({"ts": ts, "symbol": r["symbol"], "tier": r["tier"], "session": r["session"],
+                                "quoted": int(r["quoted"] or 0), "status": r["sla_status"],
+                                **{k: _num(r[c]) for k, c in (("ask", "ask_1k"), ("bid", "bid_1k"), ("mid", "mid_price"),
+                                   ("bps", "mid_bps"), ("bm", "bm_hi_bps"), ("buy", "max_buy_usd"), ("sell", "max_sell_usd"),
+                                   ("i10", "impact_buy_10k_pct"), ("i50", "impact_buy_50k_pct"), ("i100", "impact_buy_100k_pct"))}})
+    return out
+
+
+def _bucket(rows):
+    """一个时间桶 -> 一行 SERIES_FIELDS（价格与点差取中位，另给点差最大值；计数用于在线率 / 达标率）。"""
+    med = lambda k: (lambda xs: round(statistics.median(xs), 4) if xs else None)([r[k] for r in rows if r[k] is not None])
+    sess = statistics.mode(r["session"] for r in rows)
+    bps = [r["bps"] for r in rows if r["bps"] is not None]
+    bms = [r["bm"] for r in rows if r["bm"] is not None]
+    return [None, SESS_CODE.get(sess, 2), len(rows), sum(r["quoted"] for r in rows),
+            sum(r["status"] != "unquoted_off_hours" for r in rows), sum(r["status"] == "pass" for r in rows),
+            sum(r["status"] == "wide" for r in rows), med("ask"), med("bid"), med("mid"), med("bps"),
+            round(max(bps), 2) if bps else None, bms[-1] if bms else None, med("buy"), med("sell"), med("i10"), med("i50"), med("i100")]
+
+
+def export_series(sla_dir, out_dir, now):
+    """为每个标的写 <out_dir>/<SYMBOL>.json：raw（5 分钟，5 天）、q15（15 分钟，7 天）、h1（1 小时，31 天）三层。"""
+    rows = _series_rows(Path(sla_dir) / "rfq", now - max(d for _, d in SERIES_LAYERS.values()) * 86400)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    by_sym = {}
+    for r in rows:
+        by_sym.setdefault(r["symbol"], []).append(r)
+    for sym, rs in by_sym.items():
+        layers = {}
+        for name, (step, days) in SERIES_LAYERS.items():
+            buckets = {}
+            for r in rs:
+                if r["ts"] >= now - days * 86400:
+                    buckets.setdefault(r["ts"] // step * step, []).append(r)
+            pts = []
+            for t in sorted(buckets):
+                p = _bucket(buckets[t])
+                p[0] = t
+                pts.append(p)
+            layers[name] = {"step": step, "days": days, "points": pts}
+        last = rs[-1]
+        (out_dir / f"{sym}.json").write_text(json.dumps({
+            "symbol": sym, "tier": last["tier"], "ts": now, "fields": SERIES_FIELDS, "sessions": list(SESS_CODE),
+            "latest": {k: last[k] for k in ("ts", "session", "quoted", "status", "ask", "bid", "mid", "bps", "bm", "buy", "sell")},
+            "layers": layers}, separators=(",", ":")))
+    (out_dir / "index.json").write_text(json.dumps({"ts": now, "symbols": sorted(by_sym), "tiers": {s: rs[-1]["tier"] for s, rs in by_sym.items()}}))
+    return len(by_sym)

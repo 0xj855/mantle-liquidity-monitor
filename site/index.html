@@ -111,6 +111,7 @@ tbody tr.sel{background:var(--hover);box-shadow:inset 3px 0 0 var(--ink)}
 .tip .r span{color:var(--ink-2)}
 .card-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
 .card-head a{color:var(--ink-2);font-size:12.5px}
+.card-links{display:inline-flex;flex-wrap:wrap;gap:4px 14px}
 .detail-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:12px}
 .detail-head h2{font-size:18px;margin:0}
 .detail-head a{color:var(--muted);font-size:12px}
@@ -233,7 +234,7 @@ const I18N = {
     mixTvl: "10 池合计 TVL", mixLps: "LP 地址数", mixVsCommit: l => `${l} 资金 / 约定`, met: "达标", short: "不足",
     mixCols: ["LP", "资金", "占 10 池 TVL", "覆盖池子", "头寸数"], mixOthers: n => `其余 ${n} 个地址`, mixUnattr: "未归属（未领取手续费等）",
     mixPoolCols: l => ["池子", "TVL", l || "最大 LP", "其他 LP 资金", "其他 LP 数"], mixMissing: p => `未覆盖：${p.join("、")}`,
-    rfqTitle: "Fluxion RFQ 流动性与价格深度", rfqSlaLink: "SLA 执行记录（历史汇总）→",
+    rfqTitle: "Fluxion RFQ 流动性与价格深度", rfqSlaLink: "SLA 执行记录（历史汇总）→", rfqHistLink: "报价历史 →",
     rfqDesc: "做市商针对 native xStocks 的实时报价、买卖双向价差与多档承接深度（$1k ～ $100k），并严格按美股交易时段（盘中 / 盘前盘后 / 周末）对照做市 SLA 承诺基准进行质检。",
     rfqSess: "美股交易时段",
     rfqActive: "报价在线率", rfqActiveVal: (a, t) => `${a} / ${t} 在线`,
@@ -310,7 +311,7 @@ const I18N = {
     mixTvl: "10-pool TVL", mixLps: "LP addresses", mixVsCommit: l => `${l} capital / committed`, met: "Met", short: "Short",
     mixCols: ["LP", "Capital", "Share of 10-pool TVL", "Pools", "Positions"], mixOthers: n => `${n} other addresses`, mixUnattr: "Unattributed (uncollected fees etc.)",
     mixPoolCols: l => ["Pool", "TVL", l || "Top LP", "Other LPs' capital", "Other LPs"], mixMissing: p => `Not covered: ${p.join(", ")}`,
-    rfqTitle: "Fluxion RFQ Liquidity & Price Depth", rfqSlaLink: "SLA track record (history) →",
+    rfqTitle: "Fluxion RFQ Liquidity & Price Depth", rfqSlaLink: "SLA track record (history) →", rfqHistLink: "Quote history →",
     rfqDesc: "Real-time market maker quotes, bid-ask spreads, and multi-tier depth ($1k – $100k) for native xStocks, benchmarked against SLA commitments by US market session (Market Open / Pre-Post / Weekend).",
     rfqSess: "Trading Session",
     rfqActive: "Quoting availability", rfqActiveVal: (a, t) => `${a} / ${t} online`,
@@ -602,7 +603,8 @@ function renderRfq() {
   t.append(tb);
 
   box.replaceChildren(
-    el("div", { class: "card-head" }, el("h2", { text: T().rfqTitle }), el("a", { href: "sla.html", text: T().rfqSlaLink })),
+    el("div", { class: "card-head" }, el("h2", { text: T().rfqTitle }),
+      el("span", { class: "card-links" }, el("a", { href: "rfq.html", text: T().rfqHistLink }), el("a", { href: "sla.html", text: T().rfqSlaLink }))),
     el("p", { class: "desc", text: T().rfqDesc }),
     sessBar,
     mini,

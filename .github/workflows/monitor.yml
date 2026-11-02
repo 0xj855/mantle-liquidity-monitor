@@ -106,9 +106,10 @@ jobs:
       - name: Build site
         run: |
           mkdir -p _site/data
-          cp site/index.html site/flows.html site/sla.html _site/
+          cp site/index.html site/flows.html site/sla.html site/rfq.html _site/
           cp data/reports/latest.json data/reports/history.json data/reports/latest.md data/reports/counterparties.json data/reports/sla.json _site/data/
           mkdir -p _site/data/sla && cp sla-data/rfq/*.csv _site/data/sla/ 2>/dev/null || true   # 首次运行前还没有 CSV
+          mkdir -p _site/data/rfq && cp data/reports/rfq/*.json _site/data/rfq/ 2>/dev/null || true
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
