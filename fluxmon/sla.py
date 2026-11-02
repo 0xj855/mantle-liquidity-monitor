@@ -213,7 +213,9 @@ def _bucket(rows):
 
 VENUE_METRICS = ["f_spread", "j_spread", "f_buy10", "j_buy10", "f_buy100", "j_buy100", "f_sell10", "j_sell10",
                  "buy_adv10", "buy_adv100", "sell_adv10"]
-VENUE_SERIES = ["t", "sess", "n", "fq"] + VENUE_METRICS + [f"{k}_{s}" for s in ("b10", "b100", "s10") for k in ("w", "l", "c")]
+VENUE_SIZES = {"b10": ("buy_adv10", "f_buy10", "j_buy10"), "b100": ("buy_adv100", "f_buy100", "j_buy100"), "s10": ("sell_adv10", "f_sell10", "j_sell10")}
+# 每档：w/l = Fluxion / Jupiter 更优的样本数，c = 两边都有报价的样本数，fv / jv = Fluxion / Jupiter 有报价的样本数
+VENUE_SERIES = ["t", "sess", "n", "fq"] + VENUE_METRICS + [f"{k}_{s}" for s in VENUE_SIZES for k in ("w", "l", "c", "fv", "jv")]
 
 
 def _venue_rows(venue_dir, since):
@@ -233,9 +235,10 @@ def _venue_bucket(rows):
     med = lambda k: (lambda xs: round(statistics.median(xs), 2) if xs else None)([r[k] for r in rows if r[k] is not None])
     out = [None, SESS_CODE.get(statistics.mode(r["session"] for r in rows), 2), len(rows), sum(r["fq"] for r in rows)]
     out += [med(k) for k in VENUE_METRICS]
-    for k in ("buy_adv10", "buy_adv100", "sell_adv10"):
-        xs = [r[k] for r in rows if r[k] is not None]
-        out += [sum(x >= 1 for x in xs), sum(x <= -1 for x in xs), len(xs)]
+    for adv, f, j in VENUE_SIZES.values():
+        xs = [r[adv] for r in rows if r[adv] is not None]
+        out += [sum(x >= 1 for x in xs), sum(x <= -1 for x in xs), len(xs),
+                sum(r[f] is not None for r in rows), sum(r[j] is not None for r in rows)]
     return out
 
 

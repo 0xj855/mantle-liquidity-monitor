@@ -126,6 +126,8 @@ footer{color:var(--muted);font-size:12px;margin-top:24px;line-height:1.7}
     <div class="now" id="v-stats"></div>
     <div class="row-h"><h3 data-i18n="cAdv"></h3></div>
     <div class="legend" id="lg-adv"></div><div class="chart" id="ch-adv"></div>
+    <div class="row-h"><h3 data-i18n="cCov"></h3></div>
+    <div class="legend" id="lg-cov"></div><div class="chart" id="ch-cov"></div>
     <div class="row-h"><h3 data-i18n="cCost"></h3><div class="seg" id="f-cost">
       <button data-v="buy10" aria-pressed="true"></button><button data-v="buy100" aria-pressed="false"></button>
       <button data-v="sell10" aria-pressed="false"></button><button data-v="spread" aria-pressed="false"></button></div></div>
@@ -167,6 +169,8 @@ const I18N = {
     cAdv: "优势走势（bps，正 = Fluxion 更优）", cCost: "相对美股价的成本（bps，越低越好）",
     vSize: { buy10: "买入 $10k", buy100: "买入 $100k", sell10: "卖出 $10k", spread: "买卖价差" },
     vWin: p => `Fluxion 更优 ${p}`, vWinD: (l, m) => `Jupiter 更优 ${l} · 优势中位 ${m}`, vNone: "该窗口没有跨链比价数据。",
+    vCov: (v, f, j) => `有效样本 ${v} · Fluxion 缺报价 ${f} · Jupiter 缺报价 ${j}`,
+    cCov: "报价覆盖（线条断开的原因）", covBoth: "双方都有报价", covF: "Fluxion 无该档报价", covJ: "Jupiter 无报价", covShort: { b10: "买 $10k", b100: "买 $100k", s10: "卖 $10k" },
     lFlux: "Fluxion RFQ", lJup: "Jupiter", tVenue: "跨链比价",
     footer: "数据源：Fluxion RFQ 报价接口（$1k–$100k 各档询价）、Jupiter 聚合器报价与 Yahoo 美股价格；原始样本见 SLA 执行记录页的 CSV 与仓库 sla-data 分支（rfq/、venue/）。",
   },
@@ -191,6 +195,8 @@ const I18N = {
     cAdv: "Advantage (bps, positive = Fluxion better)", cCost: "Cost versus the US stock price (bps, lower is better)",
     vSize: { buy10: "Buy $10k", buy100: "Buy $100k", sell10: "Sell $10k", spread: "Bid-ask spread" },
     vWin: p => `Fluxion better ${p}`, vWinD: (l, m) => `Jupiter better ${l} · median advantage ${m}`, vNone: "No cross-venue data in this window.",
+    vCov: (v, f, j) => `Valid ${v} · Fluxion unquoted ${f} · Jupiter unquoted ${j}`,
+    cCov: "Quote coverage (why lines break)", covBoth: "Both quoted", covF: "No Fluxion quote at this size", covJ: "No Jupiter quote", covShort: { b10: "Buy $10k", b100: "Buy $100k", s10: "Sell $10k" },
     lFlux: "Fluxion RFQ", lJup: "Jupiter", tVenue: "Cross-venue",
     footer: "Sources: Fluxion RFQ quote API ($1k–$100k probes), Jupiter aggregator quotes and Yahoo US stock prices. Raw samples are on the SLA record page (CSV) and the repository's sla-data branch (rfq/, venue/).",
   },
@@ -255,7 +261,7 @@ function render() {
   const { D, pts } = V;
   $("#meta").textContent = T().updated + tUTC(D.ts);
   renderNow(V);
-  for (const id of ["#ch-price", "#ch-bps", "#ch-fill", "#ch-imp", "#ch-strip", "#ch-adv", "#ch-cost", "#v-stats"]) $(id).replaceChildren();
+  for (const id of ["#ch-price", "#ch-bps", "#ch-fill", "#ch-imp", "#ch-strip", "#ch-adv", "#ch-cov", "#ch-cost", "#v-stats"]) $(id).replaceChildren();
   if (!pts.length) { $("#ch-price").append(el("div", { class: "empty", text: T().noData })); return; }
   legends();
   charts.length = 0;
@@ -294,13 +300,13 @@ function legends() {
 // ---------- cross-venue ----------
 function renderVenue() {
   const VV = state.vview;
-  if (!VV || !VV.pts.length) { $("#v-stats").append(el("div", { class: "empty", text: T().vNone })); $("#lg-adv").replaceChildren(); $("#lg-cost").replaceChildren(); return; }
-  const P = VV.pts, sum = k => P.reduce((s, p) => s + (p[k] || 0), 0);
-  const cell = (label, w, l, c, key) => { const meds = P.map(p => p[key]).filter(v => v != null);
-    return el("div", {}, el("div", { class: "k", text: label }), el("div", { class: "v", text: T().vWin(rate(sum(w), sum(c))) }),
-      el("div", { class: "d", text: T().vWinD(rate(sum(l), sum(c)), sbps(quant(meds, .5))) })); };
-  $("#v-stats").replaceChildren(cell(T().vSize.buy10, "w_b10", "l_b10", "c_b10", "buy_adv10"),
-    cell(T().vSize.buy100, "w_b100", "l_b100", "c_b100", "buy_adv100"), cell(T().vSize.sell10, "w_s10", "l_s10", "c_s10", "sell_adv10"));
+  if (!VV || !VV.pts.length) { $("#v-stats").append(el("div", { class: "empty", text: T().vNone })); for (const id of ["#lg-adv", "#lg-cov", "#lg-cost"]) $(id).replaceChildren(); return; }
+  const P = VV.pts, sum = k => P.reduce((s, p) => s + (p[k] || 0), 0), N = sum("n");
+  const cell = (label, sz, key) => { const meds = P.map(p => p[key]).filter(v => v != null);
+    return el("div", {}, el("div", { class: "k", text: label }), el("div", { class: "v", text: T().vWin(rate(sum("w_" + sz), sum("c_" + sz))) }),
+      el("div", { class: "d", text: T().vWinD(rate(sum("l_" + sz), sum("c_" + sz)), sbps(quant(meds, .5))) }),
+      el("div", { class: "d", text: T().vCov(rate(sum("c_" + sz), N), rate(N - sum("fv_" + sz), N), rate(N - sum("jv_" + sz), N)) })); };
+  $("#v-stats").replaceChildren(cell(T().vSize.buy10, "b10", "buy_adv10"), cell(T().vSize.buy100, "b100", "buy_adv100"), cell(T().vSize.sell10, "s10", "sell_adv10"));
   const lg = (id, items) => $(id).replaceChildren(...items.map(([c, t]) => el("span", {}, el("i", { class: "ln", style: `background:${c}` }), t)));
   lg("#lg-adv", [["var(--s1)", T().vSize.buy10], ["var(--s3)", T().vSize.buy100], ["var(--s2)", T().vSize.sell10]]);
   // 优势：对称纵轴，按 98 分位截断尖峰
@@ -310,6 +316,18 @@ function renderVenue() {
   const a = frame($("#ch-adv"), 220, -lim, lim, niceTicks(-lim, lim), v => v.toFixed(0), VV, venueTip);
   a.svg.insertBefore(sv("line", { x1: a.x0, x2: a.x1, y1: a.Y(0), y2: a.Y(0), stroke: css("--axis"), "stroke-width": 1.5 }), a.guide);
   line(a, "buy_adv10_c", css("--s1"), 1.3); line(a, "buy_adv100_c", css("--s3"), 1.3); line(a, "sell_adv10_c", css("--s2"), 1.3);
+  // 报价覆盖：每档一行；多数样本缺哪一边就标哪一边
+  $("#lg-cov").replaceChildren(...[["var(--good)", T().covBoth], ["var(--critical)", T().covF], ["var(--none)", T().covJ]]
+    .map(([c, t]) => el("span", {}, el("i", { style: `background:${c}` }), t)));
+  const cv = frame($("#ch-cov"), 96, 0, 1, [], () => "", VV, venueTip), rowH = (cv.y1 - cv.y0) / 3;
+  ["b10", "b100", "s10"].forEach((sz, i) => {
+    const tx = sv("text", { x: cv.x0 - 6, y: cv.y0 + rowH * (i + .5) + 4, "text-anchor": "end", "font-size": 10.5, fill: css("--muted") });
+    tx.textContent = T().covShort[sz]; cv.svg.insertBefore(tx, cv.guide);
+    for (const p of P) {
+      const color = p["fv_" + sz] < p.n / 2 ? css("--critical") : p["jv_" + sz] < p.n / 2 ? css("--none") : css("--good");
+      cv.svg.insertBefore(sv("rect", { x: cv.X(p.t), y: cv.y0 + rowH * i + 1.5, width: Math.max(1, cv.X(p.t + VV.step) - cv.X(p.t)), height: rowH - 3, fill: color }), cv.guide);
+    }
+  });
   // 成本：Fluxion vs Jupiter
   const [fk, jk] = { buy10: ["f_buy10", "j_buy10"], buy100: ["f_buy100", "j_buy100"], sell10: ["f_sell10", "j_sell10"], spread: ["f_spread", "j_spread"] }[state.cost];
   lg("#lg-cost", [["var(--s1)", T().lFlux], ["var(--s2)", T().lJup]]);
