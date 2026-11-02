@@ -10,7 +10,7 @@ LOG_RANGE = 10_000          # rpc.mantle.xyz 单次 getLogs 的区块上限
 BLOCKS_PER_DAY = 43_200     # Mantle 出块 2s
 
 
-def rpc(method, params, url=None, timeout=60):
+def rpc(method, params, url=None, timeout=20):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     req = urllib.request.Request(url or RPC_URL, body, {"content-type": "application/json"})
     data = json.load(urllib.request.urlopen(req, timeout=timeout))
@@ -19,14 +19,15 @@ def rpc(method, params, url=None, timeout=60):
     return data["result"]
 
 
-def retry(fn, tries=8):
+def retry(fn, tries=4):
+    """最坏约 tries × 20s 超时 + 7s 退避；RPC 长时间不可用时尽快失败，而不是把整轮拖到超时。"""
     for i in range(tries):
         try:
             return fn()
         except Exception:
             if i == tries - 1:
                 raise
-            time.sleep(min(2 ** i * 0.5, 20))
+            time.sleep(min(2 ** i, 8))
 
 
 def block_number():

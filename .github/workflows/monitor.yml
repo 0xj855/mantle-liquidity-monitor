@@ -24,6 +24,7 @@ jobs:
       FLUXMON_RESEND_API_KEY: ${{ secrets.FLUXMON_RESEND_API_KEY }}
       FLUXMON_EMAIL_TO: ${{ secrets.FLUXMON_EMAIL_TO }}
       FLUXMON_EMAIL_FROM: ${{ secrets.FLUXMON_EMAIL_FROM }}
+      PYTHONUNBUFFERED: "1"   # 日志实时输出；被超时终止时也能看到卡在哪个阶段
       # 站点地址：仓库变量 FLUXMON_SITE_URL（自定义域名），未设置时用默认的 github.io 地址；须以 / 结尾
       FLUXMON_DASHBOARD_URL: ${{ vars.FLUXMON_SITE_URL || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
     timeout-minutes: 25
@@ -60,7 +61,9 @@ jobs:
             echo "cannot reach origin (ls-remote exit $rc)"; exit 1
           fi
 
+      # 正常 3–4 分钟；超过 12 分钟按失败处理（发失败邮件，SLA 提交与缓存保存照常执行）
       - name: Run monitor
+        timeout-minutes: 12
         env:
           FLUXMON_LARK_WEBHOOK: ${{ secrets.FLUXMON_LARK_WEBHOOK }}
           # 私有配置（LP 标签、合同承诺等，格式同 config/private.json）只放 Secret，不进仓库；公开产物会脱敏
@@ -90,7 +93,7 @@ jobs:
 
       # 监控或 SLA 推送失败时发邮件（6 小时内只发一封）；必须在 cache save 之前，冷却时间才能存进数据库
       - name: Notify failure
-        if: failure() || steps.commit_sla.outcome == 'failure'
+        if: failure() || cancelled() || steps.commit_sla.outcome == 'failure'
         run: |
           python -m fluxmon.mailer failed "workflow run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 

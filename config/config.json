@@ -55,6 +55,7 @@
     "0xcda86a272531e8640cd7f1a92c01839911b90bb0": "mETH"
   },
   "min_tvl_usd": 1000,
+  "run_budget_s": 420,
   "depth_pcts": [
     0.5,
     1,

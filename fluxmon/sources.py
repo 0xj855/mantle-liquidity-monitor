@@ -19,10 +19,15 @@ SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 SOL_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 SOL_XSTOCK_DECIMALS = 8
 _catalog_payload = None
+BREAK_AFTER = 3     # 同一主机在一轮内连续超时 / 5xx 这么多次后熔断，本轮不再请求
+_host_fails = {}
 
 
-def http(url, body=None, timeout=20):
-    """返回 (status, 解析后的 JSON 或 None)。"""
+def http(url, body=None, timeout=8):
+    """返回 (status, 解析后的 JSON 或 None)；status 0 表示超时、连接失败或已熔断。"""
+    host = urllib.parse.urlsplit(url).netloc
+    if _host_fails.get(host, 0) >= BREAK_AFTER:
+        return 0, None
     headers = dict(UA)
     data = None
     if body is not None:
@@ -31,11 +36,23 @@ def http(url, body=None, timeout=20):
     try:
         resp = urllib.request.urlopen(urllib.request.Request(url, data, headers), timeout=timeout)
         raw = resp.read()
+        _host_fails[host] = 0
         return resp.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as e:   # 4xx 是正常业务结果（如无报价），只有 5xx 计入熔断
+        if e.code >= 500:
+            _fail(host)
+        else:
+            _host_fails[host] = 0
         return e.code, None
     except Exception:
+        _fail(host)
         return 0, None
+
+
+def _fail(host):
+    _host_fails[host] = _host_fails.get(host, 0) + 1
+    if _host_fails[host] == BREAK_AFTER:
+        print(f"http: {host} failed {BREAK_AFTER} times in a row, skipping it for the rest of this run")
 
 
 def xstocks_catalog():

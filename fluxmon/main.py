@@ -133,6 +133,17 @@ def run(args):
     public = bool(os.environ.get("FLUXMON_PUBLIC"))   # 产物会公开发布
     store = Store(ROOT / "data" / "fluxmon.db")
     now = int(time.time())
+    t0 = time.time()
+    budget = cfg.get("run_budget_s", 420)
+
+    def stage(name, optional=False):
+        """打印阶段耗时；optional 阶段在超出整轮时间预算时跳过（返回 False）。"""
+        el = time.time() - t0
+        if optional and el > budget:
+            print(f"[{el:4.0f}s] over budget ({budget}s), skipping {name}")
+            return False
+        print(f"[{el:4.0f}s] {name}")
+        return True
     hist_url = os.environ.get("FLUXMON_HISTORY_URL")
     if hist_url and not store.has_snapshots():   # CI 缓存丢失：从线上看板续接历史
         try:
@@ -140,6 +151,7 @@ def run(args):
             print("imported history rows:", store.import_history(hist))
         except Exception as e:
             print("history import skipped:", e)
+    stage("chain head")
     head = chain.block_number()
 
     xcat = xstocks_catalog()
@@ -197,6 +209,7 @@ def run(args):
                 r.update(ref_price=eth["price"], ref_source="cex", price_dev_pct=(r["price"] / eth["price"] - 1) * 100)
     xrows = [r for r in rows if r["base_addr"] in xcat and stable_quoted(r)]
     ratios = wrapper_ratios([r["base_addr"] for r in xrows if xcat[r["base_addr"]]["kind"] == "wrapper"])
+    stage("reference prices")
     refs = {}
     for r in xrows:
         info = xcat[r["base_addr"]]
@@ -223,6 +236,7 @@ def run(args):
             q_is1 = orient(p, meta, cfg, xcat)
             return (v1 if q_is1 else v0) or v0 or v1 or 0
         return (v0 or 0) + (v1 or 0)
+    stage("events")
     sync_events(store, [by_pool[r["pool"]] for r in rows], head, cfg["event_backfill_days"], usd_of)
     for r in rows:
         for label, days in (("events_24h", 1), ("events_7d", 7)):
@@ -236,7 +250,8 @@ def run(args):
 
     # ---- LP 集中度
     labels = {k.lower(): v for k, v in cfg.get("lp_labels", {}).items()}
-    if not args.skip_positions:
+    lp_done = not args.skip_positions and stage("lp positions", optional=True)
+    if lp_done:
         for d in dexes.values():
             drows = [r for r in rows if r["dex"] == d["id"]]
             if not drows:
@@ -270,7 +285,7 @@ def run(args):
     # ---- Fluxion RFQ 流动性与价格深度探测
     rfq_data = None
     rfq_cfg = cfg.get("rfq_depth", {})
-    if rfq_cfg.get("enabled", True) and not getattr(args, "skip_rfq_depth", False):
+    if rfq_cfg.get("enabled", True) and not getattr(args, "skip_rfq_depth", False) and stage("rfq depth", optional=True):
         rfq_symbols = cfg.get("designated", {}).get("pairs") or sorted(refs.keys())
         rfq_native_map = {}
         for a, info in xcat.items():
@@ -370,7 +385,7 @@ def run(args):
         }
 
         # ---- 跨链比价：同一 xStock 在 Solana（Jupiter）上的可成交报价
-        if cfg.get("venue_compare", {}).get("enabled", True) and not getattr(args, "skip_venue", False):
+        if cfg.get("venue_compare", {}).get("enabled", True) and not getattr(args, "skip_venue", False) and stage("venue compare", optional=True):
             try:
                 rfq_data["venue_summary"] = venue.run(store, rfq_items, cfg, session_info, now)
             except Exception as e:
@@ -381,7 +396,7 @@ def run(args):
     # ---- xStocks 流通量与交易所充提
     flow_data = cp_data = None
     fcfg = cfg.get("flows", {})
-    if fcfg.get("enabled", True):
+    if fcfg.get("enabled", True) and stage("flows", optional=True):
         try:
             syms = cfg.get("designated", {}).get("pairs") or []
             natives = {info["symbol"]: a for a, info in xcat.items() if info["kind"] == "native" and info["symbol"] in syms}
@@ -400,6 +415,7 @@ def run(args):
             print("counterparty failed:", repr(e))
             cp_data = {"ts": now, "error": "counterparty classification failed"}   # 页面显示暂不可用，而不是 404
 
+    stage("alerts")
     # ---- 告警（去重：仅新触发 / 恢复时推送）
     a = cfg["alerts"]
     fired = {}
@@ -410,6 +426,10 @@ def run(args):
     for key, sev, code, params in designated_alerts(designated, cfg):
         fired[key] = (sev, message_zh(code, params), code, params)
     active = store.active_alerts()
+    if not lp_done:   # 本轮没算 LP 持仓：依赖它的告警保持上一轮状态，避免误报"已恢复"或承诺方资金为 0
+        lp_dep = lambda k: k.startswith("designated:") or ":lp_conc" in k or ":range_edge:" in k
+        fired = {k: v for k, v in fired.items() if not lp_dep(k)}
+        fired.update({k: (row[1], row[2], None, None) for k, row in active.items() if lp_dep(k)})
     new_lines, resolved_lines = [], []   # [(key, 文案, 级别)]
     rank = {"info": 0, "warn": 1, "critical": 2}
     for key, (sev, msg, _, _) in fired.items():
