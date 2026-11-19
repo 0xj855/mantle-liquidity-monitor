@@ -112,8 +112,17 @@ jobs:
           mkdir -p _site/data/rfq && cp data/reports/rfq/*.json _site/data/rfq/ 2>/dev/null || true
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+      # 同一 job 内紧接着 deploy-pages 时，ArtifactService 索引偶发滞后数百毫秒导致 Found 0 artifact(s)
+      - name: Wait for Pages artifact indexing
+        run: |
+          sleep 3
+          for i in 1 2 3 4 5; do
+            curl -fsSL "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" 2>/dev/null | grep -q '"github-pages"' && break
+            sleep 2
+          done
+          true
       - id: deploy
         uses: actions/deploy-pages@v4
