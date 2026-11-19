@@ -150,11 +150,12 @@ const state = { sym: null, win: "1w", index: null, data: {}, view: null, vview: 
 const I18N = {
   zh: {
     docTitle: "Fluxion RFQ 报价历史", back: "← 返回流动性看板", toSla: "SLA 执行记录 →", title: "Fluxion RFQ 报价历史",
-    subtitle: "10 个指定 xStocks 的 RFQ 报价走势，约每 5 分钟采样一次（时间为 UTC）。3 天和 5 天显示 5 分钟原始点，1 周按 15 分钟、1 月按 1 小时取中位数。",
+    subtitle: "指定与观察 xStocks 的 RFQ 报价走势，约每 5 分钟采样一次（时间为 UTC）。3 天和 5 天显示 5 分钟原始点，1 周按 15 分钟、1 月按 1 小时取中位数。",
     win: { "3d": "3 天", "5d": "5 天", "1w": "1 周", "1m": "1 月" },
     loadFail: "数据加载失败：", noData: "该窗口还没有数据。", updated: "更新于 ",
     sess: { market_open: "盘中", pre_post: "盘前盘后", weekend: "周末 / 休市" },
-    status: { pass: "达标", wide: "超标", no_bid: "缺卖价", missing_open: "盘中缺报价", unquoted_off_hours: "非盘中无报价" },
+    status: { pass: "达标", wide: "超标", no_bid: "缺卖价", missing_open: "盘中缺报价", unquoted_off_hours: "非盘中无报价", watch: "观察标的" },
+    watchQuoted: "在线（观察）", watchUnquoted: "无报价（观察）", noBm: "无 SLA 基准（观察标的）",
     nowTitle: "当前报价", winStats: w => `${w} 窗口统计`,
     kAsk: "买价 Ask ($1k)", kBid: "卖价 Bid ($1k)", kBps: "中价点差", kBpsD: bm => `基准上限 ${bm}`, kFill: "最大承接 买 / 卖", kState: "状态",
     kUp: "报价在线率", kPass: "达标率", kPassD: "达标 / 考核样本", kMed: "点差 中位 / P90", kWide: "超标次数", kMiss: "盘中缺报价", kDepth: "最大承接（中位）",
@@ -176,11 +177,12 @@ const I18N = {
   },
   en: {
     docTitle: "Fluxion RFQ Quote History", back: "← Back to liquidity dashboard", toSla: "SLA record →", title: "Fluxion RFQ quote history",
-    subtitle: "RFQ quotes for the 10 designated xStocks, sampled about every 5 minutes (times in UTC). 3d and 5d show raw 5-minute samples; 1w uses 15-minute and 1m hourly medians.",
+    subtitle: "RFQ quotes for designated and watchlist xStocks, sampled about every 5 minutes (times in UTC). 3d and 5d show raw 5-minute samples; 1w uses 15-minute and 1m hourly medians.",
     win: { "3d": "3d", "5d": "5d", "1w": "1w", "1m": "1m" },
     loadFail: "Failed to load data: ", noData: "No data in this window yet.", updated: "Updated ",
     sess: { market_open: "Market open", pre_post: "Pre / post", weekend: "Weekend / holiday" },
-    status: { pass: "Pass", wide: "Wide", no_bid: "No bid", missing_open: "Missing (open)", unquoted_off_hours: "Unquoted off-hours" },
+    status: { pass: "Pass", wide: "Wide", no_bid: "No bid", missing_open: "Missing (open)", unquoted_off_hours: "Unquoted off-hours", watch: "Watchlist" },
+    watchQuoted: "Quoted (watch)", watchUnquoted: "Unquoted (watch)", noBm: "No SLA benchmark (watchlist)",
     nowTitle: "Latest quote", winStats: w => `${w} window`,
     kAsk: "Ask ($1k)", kBid: "Bid ($1k)", kBps: "Mid spread", kBpsD: bm => `Benchmark ceiling ${bm}`, kFill: "Max fill buy / sell", kState: "Status",
     kUp: "Quote uptime", kPass: "Pass rate", kPassD: "Pass / assessed samples", kMed: "Spread median / P90", kWide: "Wide samples", kMiss: "Missing in market hours", kDepth: "Max fill (median)",
@@ -271,7 +273,10 @@ function render() {
 
 function renderNow({ D, pts }) {
   const L = D.latest, st = L.status;
-  const chipCls = { pass: "pass", wide: "wide", no_bid: "nobid", missing_open: "miss", unquoted_off_hours: "off" }[st] || "off";
+  const isWatch = D.tier === "Watch" || st === "watch";
+  const chipCls = isWatch ? (L.quoted ? "pass" : "off") : ({ pass: "pass", wide: "wide", no_bid: "nobid", missing_open: "miss", unquoted_off_hours: "off" }[st] || "off");
+  const statusText = isWatch ? (L.quoted ? T().watchQuoted : T().watchUnquoted) : (T().status[st] || st || "–");
+  const bmDesc = isWatch && L.bm == null ? T().noBm : T().kBpsD(bps(L.bm));
   const cell = (k, v, d) => el("div", {}, el("div", { class: "k", text: k }), typeof v === "string" ? el("div", { class: "v", text: v }) : el("div", { class: "v" }, v), d ? el("div", { class: "d", text: d }) : null);
   const n = pts.reduce((s, p) => s + p.n, 0), q = pts.reduce((s, p) => s + p.q, 0), e = pts.reduce((s, p) => s + p.e, 0), pa = pts.reduce((s, p) => s + p.p, 0), w = pts.reduce((s, p) => s + p.w, 0);
   const miss = pts.reduce((s, p) => s + (p.sess === 0 ? p.n - p.q : 0), 0);
@@ -279,8 +284,8 @@ function renderNow({ D, pts }) {
   $("#now").replaceChildren(
     el("div", { class: "row-h", style: "margin-top:0" }, el("h3", { text: `${T().nowTitle} · ${D.symbol} · ${D.tier}` }), el("span", { class: "d", style: "color:var(--muted);font-size:12px", text: `${tUTC(L.ts)} · ${T().sess[L.session] || L.session}` })),
     el("div", { class: "now" },
-      cell(T().kAsk, price(L.ask)), cell(T().kBid, price(L.bid)), cell(T().kBps, bps(L.bps), T().kBpsD(bps(L.bm))),
-      cell(T().kFill, `${usdK(L.buy)} / ${usdK(L.sell)}`), cell(T().kState, el("span", { class: "chip " + chipCls, text: T().status[st] || st || "–" }))),
+      cell(T().kAsk, price(L.ask)), cell(T().kBid, price(L.bid)), cell(T().kBps, bps(L.bps), bmDesc),
+      cell(T().kFill, `${usdK(L.buy)} / ${usdK(L.sell)}`), cell(T().kState, el("span", { class: "chip " + chipCls, text: statusText }))),
     el("div", { class: "row-h" }, el("h3", { text: T().winStats(T().win[state.win]) })),
     el("div", { class: "now" },
       cell(T().kUp, rate(q, n)), cell(T().kPass, rate(pa, e), T().kPassD), cell(T().kMed, `${bps(quant(spreads, .5))} / ${bps(quant(spreads, .9))}`),
@@ -313,11 +318,15 @@ function renderVenue() {
   lg("#lg-adv", [["var(--s1)", T().vSize.buy10], ["var(--s3)", T().vSize.buy100], ["var(--s2)", T().vSize.sell10]]);
   // 优势：对称纵轴，按 98 分位截断尖峰
   const adv = P.flatMap(p => [p.buy_adv10, p.buy_adv100, p.sell_adv10]).filter(v => v != null);
-  const lim = Math.max(5, quant(adv.map(Math.abs), .98) * 1.15);
-  for (const p of P) for (const k of ["buy_adv10", "buy_adv100", "sell_adv10"]) p[k + "_c"] = p[k] == null ? null : Math.max(-lim, Math.min(lim, p[k]));
-  const a = frame($("#ch-adv"), 220, -lim, lim, niceTicks(-lim, lim), v => v.toFixed(0), VV, venueTip, 72);
-  a.svg.insertBefore(sv("line", { x1: a.x0, x2: a.x1, y1: a.Y(0), y2: a.Y(0), stroke: css("--axis"), "stroke-width": 1.5 }), a.guide);
-  line(a, "buy_adv10_c", css("--s1"), 1.3); line(a, "buy_adv100_c", css("--s3"), 1.3); line(a, "sell_adv10_c", css("--s2"), 1.3);
+  if (!adv.length) {
+    $("#ch-adv").append(el("div", { class: "empty", text: T().vNone }));
+  } else {
+    const lim = Math.max(5, quant(adv.map(Math.abs), .98) * 1.15);
+    for (const p of P) for (const k of ["buy_adv10", "buy_adv100", "sell_adv10"]) p[k + "_c"] = p[k] == null ? null : Math.max(-lim, Math.min(lim, p[k]));
+    const a = frame($("#ch-adv"), 220, -lim, lim, niceTicks(-lim, lim), v => v.toFixed(0), VV, venueTip, 72);
+    a.svg.insertBefore(sv("line", { x1: a.x0, x2: a.x1, y1: a.Y(0), y2: a.Y(0), stroke: css("--axis"), "stroke-width": 1.5 }), a.guide);
+    line(a, "buy_adv10_c", css("--s1"), 1.3); line(a, "buy_adv100_c", css("--s3"), 1.3); line(a, "sell_adv10_c", css("--s2"), 1.3);
+  }
   // 报价覆盖：每档一行，按该时间段内样本最多的类别着色
   const COV = { both: css("--good"), f: css("--critical"), j: css("--warning"), u: css("--none") };
   $("#lg-cov").replaceChildren(...(hasCov ? [["var(--good)", T().covBoth], ["var(--critical)", T().covF], ["var(--warning)", T().covJ], ["var(--none)", T().covU]] : [])
@@ -420,6 +429,7 @@ function drawPrice(V) {
 function drawBps(V) {
   const agg = state.win === "1w" || state.win === "1m";
   const vals = V.pts.map(p => p.bps).filter(v => v != null), bms = V.pts.map(p => p.bm).filter(v => v != null);
+  if (!vals.length && !bms.length) { $("#ch-bps").append(el("div", { class: "empty", text: T().noData })); return; }
   const hi = Math.max(1, (Math.max(0, ...bms)) * 1.6, (quant(vals, .98) || 0) * 1.15);
   const c = frame($("#ch-bps"), 220, 0, hi, niceTicks(0, hi), v => v.toFixed(0));
   for (const p of V.pts) {   // 超出纵轴上限的尖峰压到顶边
@@ -434,6 +444,7 @@ function drawBps(V) {
     c.svg.insertBefore(sv("circle", { cx: c.X(p.t + step / 2), cy: c.Y(Math.min(p.bps, hi)), r: agg ? 2.2 : 1.8, fill: css("--critical") }), c.guide);
 }
 function drawFill(V) {
+  if (!V.pts.some(p => p.q)) { $("#ch-fill").append(el("div", { class: "empty", text: T().noData })); return; }
   // 规模档位是离散的：按档位序号作纵轴（聚合中位数落在两档之间时线性插值）
   const lv = v => { if (v == null) return null; for (let i = 1; i < LEVELS.length; i++) if (v <= LEVELS[i]) return i - 1 + (v - LEVELS[i - 1]) / (LEVELS[i] - LEVELS[i - 1]); return LEVELS.length - 1; };
   const c = frame($("#ch-fill"), 200, 0, LEVELS.length - 1, LEVELS.map((_, i) => i), i => usdK(LEVELS[i]));

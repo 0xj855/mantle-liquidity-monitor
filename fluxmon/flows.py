@@ -12,17 +12,24 @@ WINDOWS = {"24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
 
 
 def sync(store, natives, head):
-    """natives: {symbol: native 地址}。首次回填 30 天，之后只扫新区块。"""
-    start = store.get("xfers_synced_block") or head - BACKFILL_DAYS * chain.BLOCKS_PER_DAY
-    if start >= head:
-        return 0
+    """natives: {symbol: native 地址}。首次回填 30 天，之后只扫新区块；新增标的单独补扫 30 天。"""
+    backfill = head - BACKFILL_DAYS * chain.BLOCKS_PER_DAY
+    prev_block = store.get("xfers_synced_block")
+    synced_syms = set(store.get("xfers_synced_syms") or (
+        [r[0] for r in store.db.execute("SELECT DISTINCT symbol FROM xfers")] if prev_block else []
+    ))
     rows = []
     for sym, tok in natives.items():
+        start = prev_block if (prev_block and sym in synced_syms) else backfill
+        if start >= head:
+            continue
         for l in chain.get_logs(tok, [TRANSFER], start + 1, head):
             rows.append((int(l["blockNumber"], 16), int(l["logIndex"], 16), sym, "0x" + l["topics"][1][-40:],
                          "0x" + l["topics"][2][-40:], int(l["data"], 16) / 1e18))
-    store.add_xfers(rows)
+    if rows:
+        store.add_xfers(rows)
     store.put("xfers_synced_block", head)
+    store.put("xfers_synced_syms", sorted(synced_syms | set(natives)))
     return len(rows)
 
 

@@ -72,6 +72,9 @@
   "rfq_size_usdc": 1000,
   "rfq_depth": {
     "enabled": true,
+    "watch_pairs": [
+      "ANTx"
+    ],
     "depth_sizes_usd": [
       1000,
       10000,

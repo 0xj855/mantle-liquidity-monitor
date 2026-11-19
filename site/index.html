@@ -65,7 +65,7 @@ h1{font-size:22px;font-weight:650;margin:0;letter-spacing:-.01em}
 .tag.wide{background:rgba(239,68,68,.15);color:var(--critical)}
 .tag.missing_open{background:rgba(239,68,68,.15);color:var(--critical)}
 .tag.no_bid{background:rgba(250,178,25,.2);color:var(--ink)}
-.tag.unquoted_off_hours{background:var(--hover);color:var(--muted);border:1px solid var(--ring)}
+.tag.unquoted_off_hours,.tag.watch{background:var(--hover);color:var(--muted);border:1px solid var(--ring)}
 .sess-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:6px 0 14px;padding:8px 12px;background:var(--hover);border:1px solid var(--ring);border-radius:8px;font-size:12.5px}
 .sess-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .sess-dot.open{background:var(--good);box-shadow:0 0 6px var(--good)}
@@ -255,7 +255,7 @@ const I18N = {
     vChart: "Fluxion 相对 Jupiter 的优势（各标的中位数，bps）", vSerBuy: "买 $100k", vSerSell: "卖 $10k",
     vNoData: "暂无数据", vNone: "暂无比价数据（等待下一轮运行）",
     fTitle: "xStocks 流通量与 Bybit 充提", fCpLink: "充提对手方画像（做市 / 散户）→",
-    fDesc: "Mantle 上 10 个指定 xStocks 的原生代币：总供应扣除发行方（Backed）库存即为流通量；提现 = Bybit 钱包转出到链上地址，充值 = 链上地址转入 Bybit 钱包。地址标签来自 Mantlescan 公开标签。",
+    fDesc: "Mantle 上监控 xStocks（10 个指定标的及观察标的）的原生代币：总供应扣除发行方（Backed）库存即为流通量；提现 = Bybit 钱包转出到链上地址，充值 = 链上地址转入 Bybit 钱包。地址标签来自 Mantlescan 公开标签。",
     fCirc: "流通量", fExch: "Bybit 钱包持有", fIssuer: "发行方库存", fNet7: "7 天净流入链上",
     fWinCols: ["窗口", "提现（Bybit → 链上）", "充值（链上 → Bybit）", "净流入链上", "链上转账总额"],
     fTx: (n, a) => `${n} 笔 / ${a} 个地址`,
@@ -332,7 +332,7 @@ const I18N = {
     vChart: "Fluxion advantage vs Jupiter (median across assets, bps)", vSerBuy: "Buy $100k", vSerSell: "Sell $10k",
     vNoData: "No data", vNone: "No comparison data yet (waiting for the next run).",
     fTitle: "xStocks circulation & Bybit flows", fCpLink: "Flow counterparties (market makers vs retail) →",
-    fDesc: "Native tokens of the 10 designated xStocks on Mantle: circulating = total supply minus issuer (Backed) inventory; withdrawal = Bybit wallet → on-chain address, deposit = on-chain address → Bybit wallet. Address labels are Mantlescan public tags.",
+    fDesc: "Native tokens of monitored xStocks (10 designated + watchlist) on Mantle: circulating = total supply minus issuer (Backed) inventory; withdrawal = Bybit wallet → on-chain address, deposit = on-chain address → Bybit wallet. Address labels are Mantlescan public tags.",
     fCirc: "Circulating", fExch: "Held by Bybit wallets", fIssuer: "Issuer inventory", fNet7: "7d net inflow on-chain",
     fWinCols: ["Window", "Withdrawals (Bybit → chain)", "Deposits (chain → Bybit)", "Net on-chain", "On-chain transfer volume"],
     fTx: (n, a) => `${n} tx / ${a} addresses`,
@@ -529,7 +529,7 @@ function renderRfq() {
 
   const stats = [
     [T().rfqActive, T().rfqActiveVal(sm.active || 0, sm.total || 0)],
-    [T().rfqSlaMet, T().rfqSlaMetVal(sm.sla_pass_count || 0, sm.total || 0)],
+    [T().rfqSlaMet, T().rfqSlaMetVal(sm.sla_pass_count || 0, sm.sla_total ?? sm.total ?? 0)],
     [T().rfqSpread, sm.avg_spread_bps ? `${sm.avg_spread_bps.toFixed(1)} bps (mid ${((sm.avg_spread_bps || 0) / 2).toFixed(1)} bps)` : "–"],
     [T().rfqDepth, T().rfqDepthVal(compact(sm.max_depth_usd || 0))],
     [T().rfqAdvantage, T().rfqAdvantageVal]
@@ -595,6 +595,9 @@ function renderRfq() {
         $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
       };
       symTd.title = `${amm.pair} (点击查看 AMM 池详情)`;
+    } else {
+      tr.style.cursor = "pointer";
+      tr.onclick = () => { location.href = "rfq.html?sym=" + encodeURIComponent(it.symbol); };
     }
 
     tr.append(symTd, tierTd, statTd, slaBmTd, actualMidTd, spTd, slaTd, askTd, bidTd, b10Td, b50Td, b100Td, ammImpTd, devTd);
@@ -642,7 +645,8 @@ function renderVenue() {
   const H = state.history?.rfq;
   if (H && Object.keys(H.symbols || {}).length) {
     const F = H.fields, ix = k => F.indexOf(k), cut = Date.now() / 1000 - state.range * 86400;
-    const rows = Object.values(H.symbols).flat().filter(r => r[0] >= cut);
+    const watch = new Set((R.items || []).filter(i => i.tier === "Watch").map(i => i.symbol));
+    const rows = Object.entries(H.symbols).filter(([s]) => !watch.has(s)).flatMap(([, v]) => v).filter(r => r[0] >= cut);
     const st = el("table");
     st.append(el("thead", {}, el("tr", {}, ...T().vSessCols.map(x => el("th", { text: x })))));
     const sb = el("tbody");

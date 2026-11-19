@@ -286,7 +286,10 @@ def run(args):
     rfq_data = None
     rfq_cfg = cfg.get("rfq_depth", {})
     if rfq_cfg.get("enabled", True) and not getattr(args, "skip_rfq_depth", False) and stage("rfq depth", optional=True):
-        rfq_symbols = cfg.get("designated", {}).get("pairs") or sorted(refs.keys())
+        watch_pairs = rfq_cfg.get("watch_pairs") or []
+        watch_set = set(watch_pairs)
+        base_pairs = cfg.get("designated", {}).get("pairs") or sorted(refs.keys())
+        rfq_symbols = list(dict.fromkeys([*base_pairs, *watch_pairs]))
         rfq_native_map = {}
         for a, info in xcat.items():
             if info["kind"] == "native" and info["symbol"] in rfq_symbols:
@@ -307,16 +310,29 @@ def run(args):
             native = rfq_native_map.get(sym)
             if not native:
                 continue
+            if sym not in refs:
+                refs[sym] = xstock_reference(sym, native, cfg["usdc"], cfg["rfq_size_usdc"])
+                time.sleep(delay)
             base_ref = refs.get(sym)
             item = probe_rfq_depth(sym, native, cfg["usdc"], depth_sizes, sell_sizes, delay, base_ref=base_ref)
+            if base_ref:
+                item["ref_price"] = base_ref.get("price")
+                item["ref_source"] = base_ref.get("source")
 
-            tier = sla_tiers.get(sym, "Tier 2")
+            is_watch = sym in watch_set and sym not in sla_tiers
+            tier = "Watch" if is_watch else sla_tiers.get(sym, "Tier 2")
             item["tier"] = tier
-            bm = sla_bms.get(tier, [20.0, 40.0])
+            bm = None if tier == "Watch" else sla_bms.get(tier, [20.0, 40.0])
             item["sla_bm_mid_bps"] = bm
-            item["sla_bm_spread_bps"] = [round(b * 2, 1) for b in bm]
+            item["sla_bm_spread_bps"] = [round(b * 2, 1) for b in bm] if bm else None
+            actual_mid_bps = item["spread_bps"] / 2 if item.get("spread_bps") is not None else None
+            item["actual_mid_bps"] = round(actual_mid_bps, 1) if actual_mid_bps is not None else None
 
-            if item["status"] != "active":
+            if tier == "Watch":
+                item["sla_status"] = "watch"
+                item["sla_text_zh"] = "观察标的"
+                item["sla_text_en"] = "Watchlist"
+            elif item["status"] != "active":
                 if session_info["is_open"]:
                     item["sla_status"] = "missing_open"
                     item["sla_text_zh"] = "盘中缺报价"
@@ -326,8 +342,6 @@ def run(args):
                     item["sla_text_zh"] = "盘前盘后无报价" if session_info["session"] == "pre_post" else "周末无报价"
                     item["sla_text_en"] = "Unquoted Off-Hours"
             else:
-                actual_mid_bps = item["spread_bps"] / 2 if item.get("spread_bps") is not None else None
-                item["actual_mid_bps"] = round(actual_mid_bps, 1) if actual_mid_bps is not None else None
                 if actual_mid_bps is None:   # 只有买价、没有卖价，算不出点差
                     item["sla_status"] = "no_bid"
                     item["sla_text_zh"] = "缺卖价"
@@ -366,6 +380,7 @@ def run(args):
             rfq_items.append(item)
 
         active_items = [it for it in rfq_items if it["status"] == "active"]
+        sla_items = [it for it in rfq_items if it.get("tier") != "Watch"]
         avg_spread = (sum(it["spread_bps"] for it in active_items if it.get("spread_bps") is not None) / len(active_items)) if active_items else None
         rfq_data = {
             "ts": now,
@@ -374,11 +389,12 @@ def run(args):
             "sell_sizes_usd": sell_sizes,
             "summary": {
                 "total": len(rfq_items),
+                "sla_total": len(sla_items),
                 "active": len(active_items),
                 "no_quote": len(rfq_items) - len(active_items),
                 "avg_spread_bps": round(avg_spread, 1) if avg_spread else None,
                 "avg_mid_bps": round(avg_spread / 2, 1) if avg_spread else None,
-                "sla_pass_count": sum(1 for it in rfq_items if it.get("sla_status") == "pass"),
+                "sla_pass_count": sum(1 for it in sla_items if it.get("sla_status") == "pass"),
                 "max_depth_usd": max([it.get("max_buy_usd", 0) for it in active_items] or [0])
             },
             "items": rfq_items
@@ -398,11 +414,11 @@ def run(args):
     fcfg = cfg.get("flows", {})
     if fcfg.get("enabled", True) and stage("flows", optional=True):
         try:
-            syms = cfg.get("designated", {}).get("pairs") or []
+            syms = list(dict.fromkeys([*(cfg.get("designated", {}).get("pairs") or []), *(rfq_cfg.get("watch_pairs") or [])]))
             natives = {info["symbol"]: a for a, info in xcat.items() if info["kind"] == "native" and info["symbol"] in syms}
             prices = {s: (refs.get(s) or {}).get("price") for s in natives}
             for it in (rfq_data or {}).get("items", []):
-                prices[it["symbol"]] = prices.get(it["symbol"]) or it.get("mid_price")
+                prices[it["symbol"]] = prices.get(it["symbol"]) or it.get("mid_price") or (it.get("venue") or {}).get("ref_price")
             print("xfers synced:", flows.sync(store, natives, head))
             flow_data = flows.summarize(store, natives, fcfg.get("labels", {}), prices, head, now)
         except Exception as e:
@@ -498,7 +514,7 @@ def render_console(rep):
         sess_title = f"{sess.get('name_zh', '未知时段')} · {sess.get('et_time', '')}"
         lines.append("")
         lines.append(f"Fluxion RFQ 流动性与价格深度 [{sess_title}]")
-        lines.append(f"  在线 {sm['active']}/{sm['total']} · SLA达标 {sm.get('sla_pass_count', 0)}/{sm['total']} · 均价差 {_f(sm.get('avg_spread_bps'), '{:.1f} bps')} (mid {_f(sm.get('avg_mid_bps'), '{:.1f} bps')}) · 最大承接 ${_f(sm.get('max_depth_usd'), '{:,.0f}')}")
+        lines.append(f"  在线 {sm['active']}/{sm['total']} · SLA达标 {sm.get('sla_pass_count', 0)}/{sm.get('sla_total', sm['total'])} · 均价差 {_f(sm.get('avg_spread_bps'), '{:.1f} bps')} (mid {_f(sm.get('avg_mid_bps'), '{:.1f} bps')}) · 最大承接 ${_f(sm.get('max_depth_usd'), '{:,.0f}')}")
         lines.append(f"{'标的':<8}{'层级':<8}{'状态':<10}{'SLA承诺(mid)':>14}{'实际(mid)':>11}{'买卖价差':>10}{'SLA判定':>12}{'RFQ $10k':>10}{'RFQ $100k':>11}{'AMM $10k':>10}{'AMM偏离':>9}")
         for it in rfq["items"]:
             stat = "正常" if it["status"] == "active" else f"无报价({it.get('http_status')})"
@@ -541,7 +557,7 @@ def render_md(rep):
             "## Fluxion RFQ 流动性与价格深度",
             "",
             f"- **当前美股时段**：**{sess_name}**（美东时间 `{et_time}`）",
-            f"- **做市概况**：在线 **{sm['active']}/{sm['total']}**，SLA 达标 **{sm.get('sla_pass_count', 0)}/{sm['total']}**，平均买卖价差 **{_f(sm.get('avg_spread_bps'), '{:.1f} bps')}**（折合中价点差 {_f(sm.get('avg_mid_bps'), '{:.1f} bps')}），单笔最高承接 **${_f(sm.get('max_depth_usd'), '{:,.0f}')}**（0 滑点）。",
+            f"- **做市概况**：在线 **{sm['active']}/{sm['total']}**，SLA 达标 **{sm.get('sla_pass_count', 0)}/{sm.get('sla_total', sm['total'])}**，平均买卖价差 **{_f(sm.get('avg_spread_bps'), '{:.1f} bps')}**（折合中价点差 {_f(sm.get('avg_mid_bps'), '{:.1f} bps')}），单笔最高承接 **${_f(sm.get('max_depth_usd'), '{:,.0f}')}**（0 滑点）。",
             "",
             "| 标的 | Tier | RFQ 状态 | SLA 承诺 (from mid) | 实际点差 (mid) | 买卖价差 (Spread) | SLA 判定 | 买价 Ask ($1k) | 卖价 Bid ($1k) | RFQ $10k 冲击 | RFQ $50k 冲击 | RFQ $100k 冲击 | AMM $10k 买入冲击 | AMM 偏离 RFQ |",
             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",

@@ -122,6 +122,8 @@ def _load_month(path):
     rows = []
     with path.open() as f:
         for r in csv.DictReader(f):
+            if r.get("tier") == "Watch":
+                continue
             rows.append({"ts": int(r["ts"]), "day": r["time_utc"][:10], "symbol": r["symbol"], "tier": r["tier"],
                          "session": r["session"], "quoted": int(r["quoted"] or 0), "sla_status": r["sla_status"],
                          "mid_bps": _num(r["mid_bps"]), "bm_hi": _num(r["bm_hi_bps"]), "max_buy_usd": _num(r["max_buy_usd"])})
@@ -206,7 +208,7 @@ def _bucket(rows):
     bps = [r["bps"] for r in rows if r["bps"] is not None]
     bms = [r["bm"] for r in rows if r["bm"] is not None]
     return [None, SESS_CODE.get(sess, 2), len(rows), sum(r["quoted"] for r in rows),
-            sum(r["status"] != "unquoted_off_hours" for r in rows), sum(r["status"] == "pass" for r in rows),
+            sum(r["bm"] is not None and r["status"] != "unquoted_off_hours" for r in rows), sum(r["status"] == "pass" for r in rows),
             sum(r["status"] == "wide" for r in rows), med("ask"), med("bid"), med("mid"), med("bps"),
             round(max(bps), 2) if bps else None, bms[-1] if bms else None, med("buy"), med("sell"), med("i10"), med("i50"), med("i100")]
 
@@ -282,5 +284,6 @@ def export_series(sla_dir, out_dir, now):
             "symbol": sym, "tier": last["tier"], "ts": now, "fields": SERIES_FIELDS, "sessions": list(SESS_CODE),
             "latest": {k: last[k] for k in ("ts", "session", "quoted", "status", "ask", "bid", "mid", "bps", "bm", "buy", "sell")},
             "layers": layers, "venue": venue}, separators=(",", ":")))
-    (out_dir / "index.json").write_text(json.dumps({"ts": now, "symbols": sorted(by_sym), "tiers": {s: rs[-1]["tier"] for s, rs in by_sym.items()}}))
+    syms_sorted = sorted(by_sym, key=lambda s: (by_sym[s][-1]["tier"] == "Watch", s))
+    (out_dir / "index.json").write_text(json.dumps({"ts": now, "symbols": syms_sorted, "tiers": {s: by_sym[s][-1]["tier"] for s in syms_sorted}}))
     return len(by_sym)
